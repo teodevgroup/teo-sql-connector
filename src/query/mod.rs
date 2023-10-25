@@ -3,16 +3,14 @@ use std::collections::BTreeMap;
 use itertools::Itertools;
 use maplit::{btreemap, hashmap};
 use once_cell::sync::Lazy;
-use crate::app::app_ctx::AppCtx;
 use crate::schema::dialect::SQLDialect;
 use crate::schema::value::encode::{IfIMode, SQLEscape, ToLike, ToSQLString, ToWrapped, ValueToSQLString, WrapInArray};
 use crate::stmts::select::r#where::{ToWrappedSQLString, WhereClause};
 use crate::stmts::select::r#where::WhereClause::{And, Not};
 use crate::stmts::SQL;
-use crate::core::field::r#type::{FieldType, FieldTypeOwner};
-use crate::core::input::Input;
-use teo_runtime::model::Model;
-use crate::prelude::{Object, Value};
+use teo_parser::r#type::Type;
+use teo_runtime::model::{Model, object::Object, object::input::Input};
+use teo_teon::Value;
 
 pub(crate) struct Query { }
 
@@ -32,7 +30,7 @@ impl Query {
 
     fn where_entry_array(
         column_name: &str,
-        r#type: &FieldType,
+        r#type: &Type,
         optional: bool,
         value: &Value,
         op: &str,
@@ -48,7 +46,7 @@ impl Query {
 
     fn where_entry_item(
         column_name: &str,
-        r#type: &FieldType,
+        r#type: &Type,
         optional: bool,
         value: &Value,
         dialect: SQLDialect,
@@ -121,13 +119,13 @@ impl Query {
                         result.push(Self::where_item(&format!("ARRAY_LENGTH({})", &column_name), "=", "0"));
                     }
                     "length" => {
-                        result.push(Self::where_item(&format!("ARRAY_LENGTH({})", &column_name), "=", &value.to_sql_string(&FieldType::I64, false, dialect)));
+                        result.push(Self::where_item(&format!("ARRAY_LENGTH({})", &column_name), "=", &value.to_sql_string(&Type::I64, false, dialect)));
                     }
                     "_count" => {
-                        result.push(Self::where_entry_item(&format!("COUNT({})", &column_name), &FieldType::I64, false, value, dialect));
+                        result.push(Self::where_entry_item(&format!("COUNT({})", &column_name), &Type::I64, false, value, dialect));
                     }
                     "_avg" | "_sum" => {
-                        result.push(Self::where_entry_item(&format!("{}({})", key[1..].to_uppercase(), &column_name), &FieldType::F64, true, value, dialect));
+                        result.push(Self::where_entry_item(&format!("{}({})", key[1..].to_uppercase(), &column_name), &Type::F64, true, value, dialect));
                     }
                     "_min" | "_max" => {
                         result.push(Self::where_entry_item(&format!("{}({})", key[1..].to_uppercase(), &column_name), r#type, optional, value, dialect));
@@ -143,7 +141,7 @@ impl Query {
 
     fn where_entry(
         column_name: &str,
-        field_type: &FieldType,
+        field_type: &Type,
         optional: bool,
         value: &Value,
         dialect: SQLDialect,
