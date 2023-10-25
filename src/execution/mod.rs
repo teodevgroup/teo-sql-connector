@@ -17,7 +17,7 @@ use crate::core::initiator::Initiator;
 use crate::core::error::Error;
 use crate::core::field::r#type::{FieldType, FieldTypeOwner};
 use crate::core::input::Input;
-use crate::core::model::model::Model;
+use teo_runtime::model::Model;
 use crate::core::result::Result;
 use crate::prelude::{Object, Value};
 use teo_teon::teon;
@@ -28,7 +28,7 @@ impl Execution {
 
     pub(crate) fn row_to_value(model: &Model, row: &ResultRow, columns: &Vec<String>, dialect: SQLDialect) -> Value {
 
-        Value::HashMap(columns.iter().filter_map(|column_name| {
+        Value::Dictionary(columns.iter().filter_map(|column_name| {
             if let Some(field) = model.field_with_column_name(column_name) {
                 if field.auto_increment && dialect == SQLDialect::PostgreSQL {
                     Some((field.name().to_owned(), RowDecoder::decode_serial(field.is_optional(), row, column_name)))
@@ -64,7 +64,7 @@ impl Execution {
                 let group = *splitted.get(0).unwrap();
                 let field_name = *splitted.get(1).unwrap();
                 if !retval.contains_key(group) {
-                    retval.insert(group.to_string(), Value::HashMap(HashMap::new()));
+                    retval.insert(group.to_string(), Value::Dictionary(HashMap::new()));
                 }
                 if group == "_count" { // force i64
                     let count: i64 = row.get(result_key).unwrap().as_i64().unwrap();
@@ -83,7 +83,7 @@ impl Execution {
                 retval.insert(property.name().to_owned(), RowDecoder::decode(property.field_type(), property.is_optional(), row, result_key, dialect));
             }
         }
-        Value::HashMap(retval)
+        Value::Dictionary(retval)
     }
 
     pub(crate) async fn query_objects<'a>(conn: &'a PooledConnection, model: &'static Model, finder: &'a Value, dialect: SQLDialect, action: Action, action_source: Initiator, connection: Arc<dyn Connection>) -> Result<Vec<Object>> {
@@ -188,7 +188,7 @@ impl Execution {
                         let mut skipped = 0;
                         let mut taken = 0;
                         if relation.is_vec() {
-                            result.as_hashmap_mut().unwrap().insert(relation.name().to_owned(), Value::Vec(vec![]));
+                            result.as_hashmap_mut().unwrap().insert(relation.name().to_owned(), Value::Array(vec![]));
                         }
                         for included_value in included_values.iter() {
                             let mut matched = true;
@@ -205,7 +205,7 @@ impl Execution {
                             if matched {
                                 if (skip.is_none() || skip.unwrap() <= skipped) && (take.is_none() || taken < take_abs.unwrap()) {
                                     if result.get(relation.name()).is_none() {
-                                        result.as_hashmap_mut().unwrap().insert(relation.name().to_owned(), Value::Vec(vec![]));
+                                        result.as_hashmap_mut().unwrap().insert(relation.name().to_owned(), Value::Array(vec![]));
                                     }
                                     if negative_take {
                                         result.as_hashmap_mut().unwrap().get_mut(relation.name()).unwrap().as_vec_mut().unwrap().insert(0, included_value.clone());
@@ -275,7 +275,7 @@ impl Execution {
                     let included_values = Self::query_internal(conn, opposite_model, &nested_query, dialect, Some(where_addition), Some(left_join), Some(join_table_results), negative_take, additional_inner_distinct).await?;
                     // println!("see included {:?}", included_values);
                     for result in results.iter_mut() {
-                        result.as_hashmap_mut().unwrap().insert(relation.name().to_owned(), Value::Vec(vec![]));
+                        result.as_hashmap_mut().unwrap().insert(relation.name().to_owned(), Value::Array(vec![]));
                         let mut skipped = 0;
                         let mut taken = 0;
                         for included_value in included_values.iter() {
@@ -343,7 +343,7 @@ impl Execution {
             }
         };
         let columns = rows.columns().clone();
-        Ok(Value::Vec(rows.into_iter().map(|r| {
+        Ok(Value::Array(rows.into_iter().map(|r| {
             Self::row_to_aggregate_value(model, &r, &columns, dialect)
         }).collect::<Vec<Value>>()))
     }
@@ -371,7 +371,7 @@ impl Execution {
             map.remove("skip");
             map.remove("pageSize");
             map.remove("pageNumber");
-            Cow::Owned(Value::HashMap(map))
+            Cow::Owned(Value::Dictionary(map))
         } else {
             Cow::Borrowed(value)
         }
@@ -386,7 +386,7 @@ impl Execution {
             map.remove("pageSize");
             map.remove("pageNumber");
             map.remove("distinct");
-            Cow::Owned(Value::HashMap(map))
+            Cow::Owned(Value::Dictionary(map))
         } else {
             Cow::Borrowed(value)
         }

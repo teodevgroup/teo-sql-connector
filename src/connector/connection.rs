@@ -7,8 +7,7 @@ use quaint_forked::error::ErrorKind::UniqueConstraintViolation;
 use quaint_forked::pooled::PooledConnection;
 use quaint_forked::connector::owned_transaction::OwnedTransaction;
 use quaint_forked::connector::start_owned_transaction;
-use crate::app::app_ctx::AppCtx;
-use crate::core::model::model::Model;
+use teo_runtime::model::Model;
 use crate::execution::Execution;
 use crate::migration::migrate::SQLMigration;
 use crate::query::Query;
@@ -17,21 +16,18 @@ use crate::schema::dialect::SQLDialect;
 use crate::schema::value::decode::RowDecoder;
 use crate::schema::value::encode::ToSQLString;
 use crate::schema::value::encode::PSQLArrayToSQLString;
-use crate::core::action::Action;
-use crate::core::connector::connection::Connection;
-use crate::core::initiator::Initiator;
-use crate::core::error::Error;
-use crate::core::field::r#type::FieldTypeOwner;
-use crate::core::input::Input;
-use crate::core::result::Result;
-use crate::prelude::{Object, Value};
-use teo_teon::teon;
+use teo_runtime::action::Action;
+use teo_runtime::model::object::input::Input;
+use teo_runtime::model::Object;
+use teo_runtime::connection::connection::Connection;
+use teo_teon::{teon, Value};
+use teo_result::{Result, Error};
 
 #[derive(Clone)]
-pub(crate) struct SQLConnection {
-    pub(super) dialect: SQLDialect,
-    pub(super) conn: Arc<PooledConnection>,
-    pub(super) tran: Option<Arc<OwnedTransaction>>,
+pub struct SQLConnection {
+    pub dialect: SQLDialect,
+    pub conn: Arc<PooledConnection>,
+    pub tran: Option<Arc<OwnedTransaction>>,
 }
 
 impl SQLConnection {
@@ -100,9 +96,9 @@ impl SQLConnection {
                     if let Some(id) = result.last_insert_id() {
                         for key in auto_keys {
                             if model.field(key).unwrap().field_type().is_int32() {
-                                object.set_value(key, Value::I32(id as i32))?;
+                                object.set_value(key, Value::Int(id as i32))?;
                             } else {
-                                object.set_value(key, Value::I64(id as i64))?;
+                                object.set_value(key, Value::Int64(id as i64))?;
                             }
                         }
                     }

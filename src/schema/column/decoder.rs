@@ -10,7 +10,7 @@ use crate::schema::dialect::SQLDialect;
 use crate::schema::r#type::decoder::SQLTypeDecoder;
 use crate::core::field::field::Field;
 use crate::core::model::index::ModelIndex;
-use crate::core::model::model::Model;
+use teo_runtime::model::Model;
 use crate::core::pipeline::Pipeline;
 use crate::core::property::Property;
 use crate::prelude::Value;

@@ -11,7 +11,7 @@ use crate::stmts::select::r#where::WhereClause::{And, Not};
 use crate::stmts::SQL;
 use crate::core::field::r#type::{FieldType, FieldTypeOwner};
 use crate::core::input::Input;
-use crate::core::model::model::Model;
+use teo_runtime::model::Model;
 use crate::prelude::{Object, Value};
 
 pub(crate) struct Query { }
@@ -487,9 +487,9 @@ impl Query {
     fn default_desc_order(model: &Model) -> Value {
         let mut vec: Vec<Value> = vec![];
         for item in model.primary_index().items() {
-            vec.push(Value::HashMap(hashmap!{item.field_name().to_string() => Value::String("desc".to_string())}));
+            vec.push(Value::Dictionary(hashmap!{item.field_name().to_string() => Value::String("desc".to_string())}));
         }
-        Value::Vec(vec)
+        Value::Array(vec)
     }
 }
 

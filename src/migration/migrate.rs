@@ -13,13 +13,13 @@ use crate::stmts::create::table::SQLCreateTableStatement;
 use crate::stmts::SQL;
 use crate::schema::column::SQLColumn;
 use crate::schema::dialect::SQLDialect;
-use crate::core::model::model::Model;
+use teo_runtime::model::Model;
 use crate::schema::value::encode::ToSQLString;
-use crate::core::connector::connection::Connection;
-use crate::core::field::field::Sort;
+use teo_runtime::connection::connection::Connection;
+use teo_runtime::sort::Sort;
 use crate::core::model::index::{ModelIndex, ModelIndexItem, ModelIndexType};
 use crate::core::pipeline::ctx::PipelineCtx;
-use crate::prelude::Value;
+use teo_teon::value::Value;
 
 pub(crate) struct SQLMigration { }
 

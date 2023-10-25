@@ -111,15 +111,15 @@ impl ToSQLString for &Value {
         match self {
             Value::Null => "NULL".to_owned(),
             Value::String(string) => string.to_sql_input(dialect),
-            Value::I32(i) => i.to_string(),
-            Value::I64(i) => i.to_string(),
-            Value::F32(i) => i.to_string(),
-            Value::F64(i) => i.to_string(),
+            Value::Int(i) => i.to_string(),
+            Value::Int64(i) => i.to_string(),
+            Value::Float32(i) => i.to_string(),
+            Value::Float(i) => i.to_string(),
             Value::Bool(b) => b.to_sql_input(),
             Value::Date(d) => d.to_sql_input(dialect),
             Value::DateTime(d) => d.to_sql_input(dialect),
             Value::Decimal(d) => d.to_sql_input(dialect),
-            Value::Vec(values) => format!("array[{}]", values.iter().map(|v| ToSQLString::to_string(&v, dialect)).join(",")),
+            Value::Array(values) => format!("array[{}]", values.iter().map(|v| ToSQLString::to_string(&v, dialect)).join(",")),
             Value::RawEnumChoice(string, _) => string.to_sql_input(dialect),
             _ => panic!("unhandled value: {:?}", self),
         }
@@ -146,7 +146,7 @@ fn field_type_to_psql(field_type: &FieldType) -> &'static str {
 impl PSQLArrayToSQLString for Value {
     fn to_string_with_ft(&self, dialect: SQLDialect, field_type: &FieldType) -> String {
         match self {
-            Value::Vec(values) => if values.is_empty() {
+            Value::Array(values) => if values.is_empty() {
                 format!("array[]::{}[]", field_type_to_psql(field_type.element_field().unwrap().field_type()))
             } else {
                 format!("array[{}]", values.iter().map(|v| {

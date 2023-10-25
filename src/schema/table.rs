@@ -1,6 +1,6 @@
 use crate::stmts::create::table::SQLCreateTableStatement;
 use crate::stmts::SQL;
-use crate::core::model::model::Model;
+use teo_runtime::model::Model;
 
 impl From<&Model> for SQLCreateTableStatement {
     fn from(model: &Model) -> Self {

@@ -13,13 +13,13 @@ impl RowDecoder {
         match value {
             quaint_forked::Value::Float(f) => {
                 match f {
-                    Some(f) => Value::F32(*f),
+                    Some(f) => Value::Float32(*f),
                     None => Value::Null,
                 }
             }
             quaint_forked::Value::Double(d) => {
                 match d {
-                    Some(d) => Value::F64(*d),
+                    Some(d) => Value::Float(*d),
                     None => Value::Null,
                 }
             }
@@ -49,13 +49,13 @@ impl RowDecoder {
             }
             quaint_forked::Value::Int32(i) => {
                 match i {
-                    Some(i) => Value::I32(*i),
+                    Some(i) => Value::Int(*i),
                     None => Value::Null,
                 }
             }
             quaint_forked::Value::Int64(i) => {
                 match i {
-                    Some(i) => Value::I64(*i),
+                    Some(i) => Value::Int64(*i),
                     None => Value::Null,
                 }
             }
@@ -79,7 +79,7 @@ impl RowDecoder {
             }
             Value::IndexMap(map)
         }).collect();
-        Value::Vec(results)
+        Value::Array(results)
     }
 
     pub(crate) fn decode_serial(optional: bool, row: &ResultRow, column_name: &str) -> Value {
@@ -92,9 +92,9 @@ impl RowDecoder {
             } else {
                 let val = try_value.unwrap();
                 if val.is_i32() {
-                    Value::I32(val.as_i32().unwrap())
+                    Value::Int(val.as_i32().unwrap())
                 } else {
-                    Value::I64(val.as_i64().unwrap())
+                    Value::Int64(val.as_i64().unwrap())
                 }
             }
         }
@@ -123,16 +123,16 @@ impl RowDecoder {
         }
         if r#type.is_int32() {
             if let Some(v) = value.as_i32() {
-                return Value::I32(v);
+                return Value::Int(v);
             } else {
                 return Value::Null;
             }
         }
         if r#type.is_int64() {
             if let Some(v) = value.as_i64() {
-                return Value::I64(v);
+                return Value::Int64(v);
             } else if let Some(v) = value.as_i32() {
-                return Value::I32(v);
+                return Value::Int(v);
             } else {
                 return Value::Null;
             }
@@ -206,7 +206,7 @@ impl RowDecoder {
         if r#type.is_vec() {
             if let Some(vals) = value.as_array() {
                 let inner = r#type.element_field().unwrap();
-                return Value::Vec(vals.iter().map(|v| Self::decode_value(inner.field_type(), inner.is_optional(), Some(v), dialect)).collect());
+                return Value::Array(vals.iter().map(|v| Self::decode_value(inner.field_type(), inner.is_optional(), Some(v), dialect)).collect());
             } else {
                 return Value::Null;
             }
