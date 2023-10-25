@@ -10,6 +10,7 @@ use crate::schema::dialect::SQLDialect;
 use crate::schema::r#type::decoder::SQLTypeDecoder;
 use teo_runtime::model::{Model, Field, Index, Property};
 use teo_runtime::model::field::column_named::ColumnNamed;
+use teo_runtime::model::field::indexable::Indexable;
 use teo_runtime::model::field::is_optional::IsOptional;
 use teo_teon::Value;
 
@@ -281,7 +282,7 @@ AND    i.indisprimary", table_name);
 
 impl From<&Field> for SQLColumn {
     fn from(field: &Field) -> Self {
-        SQLColumn::new(field.column_name().to_owned(), field.database_type().clone(), field.is_required(), field.auto_increment, None, field.primary_key)
+        SQLColumn::new(field.column_name().to_owned(), field.database_type().clone(), field.is_required(), field.auto_increment, None, field.index().is_some() && field.index().unwrap().r#type.is_primary())
     }
 }
 

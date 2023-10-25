@@ -81,7 +81,7 @@ impl SQLTransaction {
             }
         }
         let value_refs: Vec<(&str, &str)> = values.iter().map(|(k, v)| (*k, v.as_str())).collect();
-        let stmt = SQL::insert_into(model.table_name()).values(value_refs).returning(auto_keys).to_string(self.dialect());
+        let stmt = SQL::insert_into(&model.table_name).values(value_refs).returning(auto_keys).to_string(self.dialect());
         // println!("create stmt: {}", stmt);
         if self.dialect() == SQLDialect::PostgreSQL {
             match self.queryable().query(QuaintQuery::from(stmt)).await {
@@ -153,7 +153,7 @@ impl SQLTransaction {
         let identifier = object.identifier();
         let r#where = Query::where_from_previous_identifier(object, self.dialect());
         if !value_refs.is_empty() {
-            let stmt = SQL::update(model.table_name()).values(value_refs).r#where(&r#where).to_string(self.dialect());
+            let stmt = SQL::update(&model.table_name).values(value_refs).r#where(&r#where).to_string(self.dialect());
             // println!("update stmt: {}", stmt);
             let result = self.conn().execute(QuaintQuery::from(stmt)).await;
             if result.is_err() {
@@ -203,7 +203,7 @@ impl Transaction for SQLTransaction {
     async fn purge(&self, models: Vec<&Model>) -> Result<()> {
         for model in models {
             let escape = self.dialect().escape();
-            self.conn().execute(QuaintQuery::from(format!("DELETE FROM {escape}{}{escape}", model.table_name()))).await.unwrap();
+            self.conn().execute(QuaintQuery::from(format!("DELETE FROM {escape}{}{escape}", &model.table_name))).await.unwrap();
         }
         Ok(())
     }
@@ -238,7 +238,7 @@ impl Transaction for SQLTransaction {
         }
         let model = object.model();
         let r#where = Query::where_from_identifier(object, self.dialect());
-        let stmt = SQL::delete_from(model.table_name()).r#where(r#where).to_string(self.dialect());
+        let stmt = SQL::delete_from(&model.table_name).r#where(r#where).to_string(self.dialect());
         // println!("see delete stmt: {}", stmt);
         let result = self.queryable().execute(QuaintQuery::from(stmt)).await;
         if result.is_err() {

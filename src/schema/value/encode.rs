@@ -32,18 +32,18 @@ impl ValueToSQLString for Value {
             }
         }
         match r#type {
-            FieldType::String => ToSQLInputDialect::to_sql_input(&self.as_str().unwrap(), dialect),
-            FieldType::Bool => self.as_bool().unwrap().to_sql_input(),
-            FieldType::I32 | FieldType::I64 |
-            FieldType::F32 | FieldType::F64 => if let Some(val) = self.as_f64() {
+            DatabaseType::String => ToSQLInputDialect::to_sql_input(&self.as_str().unwrap(), dialect),
+            DatabaseType::Bool => self.as_bool().unwrap().to_sql_input(),
+            DatabaseType::I32 | DatabaseType::I64 |
+            DatabaseType::F32 | DatabaseType::F64 => if let Some(val) = self.as_f64() {
                 val.to_string()
             } else if let Some(val) = self.as_i64() {
                 val.to_string()
             } else {
                 panic!("Uncoded number.")
             }
-            FieldType::Enum(_) => ToSQLInputDialect::to_sql_input(&self.as_str().unwrap(), dialect),
-            FieldType::Vec(element_field) => {
+            DatabaseType::Enum(_) => ToSQLInputDialect::to_sql_input(&self.as_str().unwrap(), dialect),
+            DatabaseType::Vec(element_field) => {
                 let val = self.as_vec().unwrap();
                 let mut result: Vec<String> = vec![];
                 for (_i, v) in val.iter().enumerate() {
@@ -51,14 +51,14 @@ impl ValueToSQLString for Value {
                 }
                 result.join(", ").wrap_in_array()
             }
-            FieldType::Date => self.as_date().unwrap().to_string().to_sql_input(dialect),
-            FieldType::DateTime => self.as_datetime().unwrap().to_string().to_sql_input(dialect),
-            FieldType::Decimal => self.as_decimal().unwrap().to_string().to_sql_input(dialect),
+            DatabaseType::Date => self.as_date().unwrap().to_string().to_sql_input(dialect),
+            DatabaseType::DateTime => self.as_datetime().unwrap().to_string().to_sql_input(dialect),
+            DatabaseType::Decimal => self.as_decimal().unwrap().to_string().to_sql_input(dialect),
             _ => { panic!() }
         }
     }
 
-    fn to_sql_string_array_arg<'a>(&self, r#type: &FieldType, optional: bool, dialect: SQLDialect) -> String {
+    fn to_sql_string_array_arg<'a>(&self, r#type: &DatabaseType, optional: bool, dialect: SQLDialect) -> String {
         if optional {
             if self.is_null() {
                 return "NULL".to_owned()
@@ -66,19 +66,19 @@ impl ValueToSQLString for Value {
         }
         match r#type {
             #[cfg(feature = "data-source-mongodb")]
-            FieldType::ObjectId => panic!("SQL doesn't support `ObjectId`."),
-            FieldType::String => ToSQLInputDialect::to_sql_input(&self.as_str().unwrap(), dialect),
-            FieldType::Bool => self.as_bool().unwrap().to_sql_input(),
-            FieldType::I32 | FieldType::I64 |
-            FieldType::F32 | FieldType::F64 => if let Some(val) = self.as_f64() {
+            DatabaseType::ObjectId => panic!("SQL doesn't support `ObjectId`."),
+            DatabaseType::String => ToSQLInputDialect::to_sql_input(&self.as_str().unwrap(), dialect),
+            DatabaseType::Bool => self.as_bool().unwrap().to_sql_input(),
+            DatabaseType::I32 | DatabaseType::I64 |
+            DatabaseType::F32 | DatabaseType::F64 => if let Some(val) = self.as_f64() {
                 val.to_string()
             } else if let Some(val) = self.as_i64() {
                 val.to_string()
             } else {
                 panic!("Uncoded number.")
             }
-            FieldType::Enum(_) => ToSQLInputDialect::to_sql_input(&self.as_str().unwrap(), dialect),
-            FieldType::Vec(element_field) => {
+            DatabaseType::Enum(_) => ToSQLInputDialect::to_sql_input(&self.as_str().unwrap(), dialect),
+            DatabaseType::Vec(element_field) => {
                 let val = self.as_vec().unwrap();
                 let mut result: Vec<String> = vec![];
                 for (_i, v) in val.iter().enumerate() {
@@ -86,20 +86,20 @@ impl ValueToSQLString for Value {
                 }
                 result.join(",").wrap_in_array()
             }
-            FieldType::Date => self.as_date().unwrap().to_string(),
-            FieldType::DateTime => self.as_datetime().unwrap().to_string(),
-            FieldType::Decimal => self.as_decimal().unwrap().to_string(),
+            DatabaseType::Date => self.as_date().unwrap().to_string(),
+            DatabaseType::DateTime => self.as_datetime().unwrap().to_string(),
+            DatabaseType::Decimal => self.as_decimal().unwrap().to_string(),
             _ => { panic!() }
         }
     }
 }
 
 impl ValueToSQLString for &Value {
-    fn to_sql_string<'a>(&self, r#type: &FieldType, optional: bool, dialect: SQLDialect) -> String {
+    fn to_sql_string<'a>(&self, r#type: &DatabaseType, optional: bool, dialect: SQLDialect) -> String {
         (*self).to_sql_string(r#type, optional, dialect)
     }
 
-    fn to_sql_string_array_arg<'a>(&self, r#type: &FieldType, optional: bool, dialect: SQLDialect) -> String {
+    fn to_sql_string_array_arg<'a>(&self, r#type: &DatabaseType, optional: bool, dialect: SQLDialect) -> String {
         (*self).to_sql_string_array_arg(r#type, optional, dialect)
     }
 }
@@ -118,31 +118,31 @@ impl ToSQLString for &Value {
             Value::DateTime(d) => d.to_sql_input(dialect),
             Value::Decimal(d) => d.to_sql_input(dialect),
             Value::Array(values) => format!("array[{}]", values.iter().map(|v| ToSQLString::to_string(&v, dialect)).join(",")),
-            Value::RawEnumChoice(string, _) => string.to_sql_input(dialect),
+            Value::EnumVariant(e) => e.to_sql_input(dialect),
             _ => panic!("unhandled value: {:?}", self),
         }
     }
 }
 
 pub(crate) trait PSQLArrayToSQLString {
-    fn to_string_with_ft(&self, dialect: SQLDialect, field_type: &FieldType) -> String;
+    fn to_string_with_ft(&self, dialect: SQLDialect, field_type: &DatabaseType) -> String;
 }
 
-fn field_type_to_psql(field_type: &FieldType) -> &'static str {
+fn field_type_to_psql(field_type: &DatabaseType) -> &'static str {
     match field_type {
-        FieldType::Decimal => "decimal",
-        FieldType::I32 | FieldType::I64 => "integer",
-        FieldType::F32 | FieldType::F64 => "double precision",
-        FieldType::String => "text",
-        FieldType::Bool => "boolean",
-        FieldType::Date => "date",
-        FieldType::DateTime => "timestamp",
+        DatabaseType::Decimal => "decimal",
+        DatabaseType::I32 | DatabaseType::I64 => "integer",
+        DatabaseType::F32 | DatabaseType::F64 => "double precision",
+        DatabaseType::String => "text",
+        DatabaseType::Bool => "boolean",
+        DatabaseType::Date => "date",
+        DatabaseType::DateTime => "timestamp",
         _ => unreachable!(),
     }
 }
 
 impl PSQLArrayToSQLString for Value {
-    fn to_string_with_ft(&self, dialect: SQLDialect, field_type: &FieldType) -> String {
+    fn to_string_with_ft(&self, dialect: SQLDialect, field_type: &DatabaseType) -> String {
         match self {
             Value::Array(values) => if values.is_empty() {
                 format!("array[]::{}[]", field_type_to_psql(field_type.element_field().unwrap().field_type()))

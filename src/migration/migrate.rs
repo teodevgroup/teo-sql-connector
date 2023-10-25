@@ -153,7 +153,7 @@ impl SQLMigration {
         // compare each table and do migration
         for model in models {
             if model.is_virtual() { continue }
-            let table_name = model.table_name();
+            let table_name = &model.table_name;
             if let Some(migration) = model.migration() {
                 if !db_tables.iter().any(|x| x == table_name) {
                     for old_name in &migration.renamed {
@@ -276,7 +276,7 @@ impl SQLMigration {
         for index in model.indices() {
             // primary is created when creating table
             if index.r#type().is_primary() { continue }
-            let stmt = index.to_sql_create(dialect, model.table_name());
+            let stmt = index.to_sql_create(dialect, &model.table_name);
             conn.execute(Query::from(stmt)).await.unwrap();
         }
     }
@@ -327,7 +327,7 @@ impl SQLMigration {
     }
 
     async fn mysql_db_indices(conn: &PooledConnection, model: &Model) -> HashSet<Index> {
-        let table_name = model.table_name();
+        let table_name = &model.table_name;
         let sql = format!("SHOW INDEX FROM `{}`", table_name);
         let result_set = conn.query(Query::from(sql)).await.unwrap();
         let mut indices = vec![];
@@ -353,7 +353,7 @@ impl SQLMigration {
     }
 
     async fn psql_db_indices(conn: &PooledConnection, model: &Model) -> HashSet<Index> {
-        let table_name = model.table_name();
+        let table_name = &model.table_name;
         let sql = format!(r#"SELECT     irel.relname                           AS index_name,
            a.attname                              AS column_name,
            i.indisunique                          AS is_unique,
@@ -413,7 +413,7 @@ GROUP BY   tnsp.nspname,
     }
 
     async fn sqlite_db_indices(conn: &PooledConnection, model: &Model) -> HashSet<Index> {
-        let table_name = model.table_name();
+        let table_name = &model.table_name;
         let sql = format!(r#"SELECT
     il.name as index_name,
     ii.name as column_name,
