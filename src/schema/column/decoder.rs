@@ -9,6 +9,8 @@ use crate::schema::column::SQLColumn;
 use crate::schema::dialect::SQLDialect;
 use crate::schema::r#type::decoder::SQLTypeDecoder;
 use teo_runtime::model::{Model, Field, Index, Property};
+use teo_runtime::model::field::column_named::ColumnNamed;
+use teo_runtime::model::field::is_optional::IsOptional;
 use teo_teon::Value;
 
 #[derive(Debug)]
@@ -55,7 +57,7 @@ pub(crate) struct ColumnDecoder { }
 
 impl ColumnDecoder {
 
-    pub(crate) fn manipulations<'a>(db_columns: &'a HashSet<SQLColumn>, model_columns: &'a HashSet<SQLColumn>, db_indices: &'a HashSet<ModelIndex>, model_indices: &'a HashSet<Arc<ModelIndex>>, model: &Model) -> Vec<ColumnManipulation<'a>> {
+    pub(crate) fn manipulations<'a>(db_columns: &'a HashSet<SQLColumn>, model_columns: &'a HashSet<SQLColumn>, db_indices: &'a HashSet<Index>, model_indices: &'a HashSet<Arc<Index>>, model: &Model) -> Vec<ColumnManipulation<'a>> {
         let mut to_create: Vec<&Index> = vec![];
         let mut to_drop: Vec<&Index> = vec![];
         for index in db_indices {
@@ -113,7 +115,7 @@ impl ColumnDecoder {
                 field.migration().map(|m| m.default.clone()).flatten()
             } else { None };
 
-            result.push(ColumnManipulation::AddColumn(c, action, default));
+            result.push(ColumnManipulation::AddColumn(c, default));
         }
         for i in to_create {
             result.push(ColumnManipulation::CreateIndex(i));
@@ -125,14 +127,14 @@ impl ColumnDecoder {
             let action = if let Some(field) = model.dropped_field(c.name()) {
                 field.migration().map(|m| m.action.clone()).flatten()
             } else { None };
-            result.push(ColumnManipulation::RemoveColumn(c.name().to_owned(), action));
+            result.push(ColumnManipulation::RemoveColumn(c.name().to_owned()));
         }
         for c in to_alter {
             let action = if let Some(field) = model.field(c.name()) {
                 field.migration().map(|m| m.action.clone()).flatten()
             } else { None };
             let old = db_columns.iter().find(|dbc| dbc.name() == c.name()).unwrap();
-            result.push(ColumnManipulation::AlterColumn(old, c, action));
+            result.push(ColumnManipulation::AlterColumn(old, c));
         }
         for c in to_rename {
             result.push(ColumnManipulation::RenameColumn { old: c.0, new: c.1 })
@@ -279,7 +281,7 @@ AND    i.indisprimary", table_name);
 
 impl From<&Field> for SQLColumn {
     fn from(field: &Field) -> Self {
-        SQLColumn::new(field.column_name().to_owned(), field.database_type().clone(), field.is_required(), field.auto_increment, None, field.primary)
+        SQLColumn::new(field.column_name().to_owned(), field.database_type().clone(), field.is_required(), field.auto_increment, None, field.primary_key)
     }
 }
 

@@ -22,6 +22,7 @@ use teo_runtime::model::{Index, index::Item};
 use teo_runtime::index::Type;
 use teo_teon::value::Value;
 use teo_result::{Result};
+use crate::exts::index::IndexExt;
 
 pub(crate) struct SQLMigration { }
 
@@ -299,7 +300,7 @@ impl SQLMigration {
         result
     }
 
-    fn normalized_model_indices(indices: &Vec<Arc<Index>>, dialect: SQLDialect, table_name: &str) -> HashSet<Arc<ModelIndex>> {
+    fn normalized_model_indices(indices: &Vec<Arc<Index>>, dialect: SQLDialect, table_name: &str) -> HashSet<Arc<Index>> {
         let mut results: Vec<Arc<Index>> = indices.iter().map(|index| {
             let mut index = index.as_ref().clone();
             let sql_name_cow = index.sql_name(table_name, dialect);
@@ -316,7 +317,7 @@ impl SQLMigration {
         results.into_iter().collect()
     }
 
-    async fn db_indices(dialect: SQLDialect, conn: &PooledConnection, model: &Model) -> HashSet<ModelIndex> {
+    async fn db_indices(dialect: SQLDialect, conn: &PooledConnection, model: &Model) -> HashSet<Index> {
         match dialect {
             SQLDialect::PostgreSQL => Self::psql_db_indices(conn, model).await,
             SQLDialect::MySQL => Self::mysql_db_indices(conn, model).await,
@@ -325,25 +326,25 @@ impl SQLMigration {
         }
     }
 
-    async fn mysql_db_indices(conn: &PooledConnection, model: &Model) -> HashSet<ModelIndex> {
+    async fn mysql_db_indices(conn: &PooledConnection, model: &Model) -> HashSet<Index> {
         let table_name = model.table_name();
         let sql = format!("SHOW INDEX FROM `{}`", table_name);
         let result_set = conn.query(Query::from(sql)).await.unwrap();
         let mut indices = vec![];
         for row in result_set {
-            let index_name = Box::leak(Box::new(row.get("Key_name").unwrap().to_string().unwrap()));
-            let column_name = Box::leak(Box::new(row.get("Column_name").unwrap().to_string().unwrap()));
+            let index_name = row.get("Key_name").unwrap().to_string().unwrap();
+            let column_name = row.get("Column_name").unwrap().to_string().unwrap();
             let order = Sort::from_mysql_str(row.get("Collation").unwrap().as_str().unwrap()).unwrap();
-            if let Some(position) = indices.iter().position(|m: &ModelIndex| m.name().unwrap() == *index_name) {
+            if let Some(position) = indices.iter().position(|m: &Index| m.name().unwrap() == *index_name) {
                 let model_index = indices.get_mut(position).unwrap();
-                let item = ModelIndexItem::new(column_name, order, None);
+                let item = Item::new(column_name, order, None);
                 model_index.append_item(item);
             } else {
                 let is_unique = !row.get("Non_unique").unwrap().as_bool().unwrap();
-                let item = ModelIndexItem::new(column_name, order, None);
-                indices.push(ModelIndex::new(
-                    if *index_name == "PRIMARY" { ModelIndexType::Primary } else if is_unique { ModelIndexType::Unique } else { ModelIndexType::Index },
-                    Some(index_name.as_str()),
+                let item = Item::new(column_name, order, None);
+                indices.push(Index::new(
+                    if *index_name == "PRIMARY" { Type::Primary } else if is_unique { Type::Unique } else { Type::Index },
+                    index_name.to_owned(),
                     vec![item],
                 ))
             }
@@ -351,7 +352,7 @@ impl SQLMigration {
         indices.into_iter().collect()
     }
 
-    async fn psql_db_indices(conn: &PooledConnection, model: &Model) -> HashSet<ModelIndex> {
+    async fn psql_db_indices(conn: &PooledConnection, model: &Model) -> HashSet<Index> {
         let table_name = model.table_name();
         let sql = format!(r#"SELECT     irel.relname                           AS index_name,
            a.attname                              AS column_name,
@@ -390,19 +391,19 @@ GROUP BY   tnsp.nspname,
         let result_set = conn.query(Query::from(sql)).await.unwrap();
         let mut indices = vec![];
         for row in result_set {
-            let index_name = Box::leak(Box::new(row.get("index_name").unwrap().to_string().unwrap()));
-            let column_name = Box::leak(Box::new(row.get("column_name").unwrap().to_string().unwrap()));
+            let index_name = row.get("index_name").unwrap().to_string().unwrap();
+            let column_name = row.get("column_name").unwrap().to_string().unwrap();
             let order = Sort::from_str(row.get("order").unwrap().as_str().unwrap()).unwrap();
-            if let Some(position) = indices.iter().position(|m: &ModelIndex| m.name().unwrap() == index_name) {
+            if let Some(position) = indices.iter().position(|m: &Index| m.name().unwrap() == index_name) {
                 let model_index = indices.get_mut(position).unwrap();
-                let item = ModelIndexItem::new(column_name, order, None);
+                let item = Item::new(column_name, order, None);
                 model_index.append_item(item);
             } else {
                 let is_unique = row.get("is_unique").unwrap().as_bool().unwrap();
                 let is_primary = row.get("is_primary").unwrap().as_bool().unwrap();
-                let item = ModelIndexItem::new(column_name, order, None);
-                indices.push(ModelIndex::new(
-                    if is_primary { ModelIndexType::Primary } else if is_unique { ModelIndexType::Unique} else { ModelIndexType::Index },
+                let item = Item::new(column_name, order, None);
+                indices.push(Index::new(
+                    if is_primary { Type::Primary } else if is_unique { Type::Unique} else { Type::Index },
                     Some(index_name.clone()),
                     vec![item],
                 ))
@@ -411,7 +412,7 @@ GROUP BY   tnsp.nspname,
         indices.into_iter().collect()
     }
 
-    async fn sqlite_db_indices(conn: &PooledConnection, model: &Model) -> HashSet<ModelIndex> {
+    async fn sqlite_db_indices(conn: &PooledConnection, model: &Model) -> HashSet<Index> {
         let table_name = model.table_name();
         let sql = format!(r#"SELECT
     il.name as index_name,
@@ -441,36 +442,36 @@ ORDER BY 1,6"#, table_name);
         let result_set = conn.query(Query::from(sql)).await.unwrap();
         let mut indices = vec![];
         for row in result_set {
-            let index_name = Box::leak(Box::new(row.get("index_name").unwrap().to_string().unwrap()));
-            let column_name = Box::leak(Box::new(row.get("column_name").unwrap().to_string().unwrap()));
+            let index_name = row.get("index_name").unwrap().to_string().unwrap();
+            let column_name = row.get("column_name").unwrap().to_string().unwrap();
             let order = Sort::from_desc_bool(row.get("desc").unwrap().as_bool().unwrap());
-            if let Some(position) = indices.iter().position(|m: &ModelIndex| m.name().unwrap() == *index_name) {
+            if let Some(position) = indices.iter().position(|m: &Index| m.name().unwrap() == *index_name) {
                 let model_index = indices.get_mut(position).unwrap();
-                let item = ModelIndexItem::new(column_name, order, None);
+                let item = Item::new(column_name, order, None);
                 model_index.append_item(item);
             } else {
                 let is_unique = row.get("is_unique").unwrap().as_bool().unwrap();
                 let is_primary = row.get("is_primary").unwrap().as_bool().unwrap();
-                let item = ModelIndexItem::new(column_name, order, None);
-                indices.push(ModelIndex::new(
-                    if is_primary { ModelIndexType::Primary } else if is_unique { ModelIndexType::Unique} else { ModelIndexType::Index },
+                let item = Item::new(column_name, order, None);
+                indices.push(Index::new(
+                    if is_primary { Type::Primary } else if is_unique { Type::Unique} else { Type::Index },
                     Some(index_name.as_str()),
                     vec![item],
                 ))
             }
         }
-        let mut results: Vec<ModelIndex> = indices.into_iter().collect();
+        let mut results: Vec<Index> = indices.into_iter().collect();
         let includes_primary = results.iter().find(|r| {
-            r.r#type() == ModelIndexType::Primary
+            r.r#type() == Type::Primary
         }).is_some();
         if !includes_primary {
             let sql = format!("SELECT * FROM pragma_table_info(\"{table_name}\") WHERE pk = 1");
             let result_set = conn.query(Query::from(sql)).await.unwrap();
             let row = result_set.into_single().unwrap();
-            let column_name = Box::leak(Box::new(row.get("name").unwrap().to_string().unwrap()));
-            let leaked = Box::leak(Box::new(column_name));
-            let index = ModelIndex::new(ModelIndexType::Primary, Some(format!("sqlite_autoindex_{table_name}_1")), vec![
-                ModelIndexItem::new(leaked, Sort::Asc, None)
+            let column_name = row.get("name").unwrap().to_string().unwrap();
+            let leaked = column_name;
+            let index = Index::new(Type::Primary, Some(format!("sqlite_autoindex_{table_name}_1")), vec![
+                Item::new(leaked, Sort::Asc, None)
             ]);
             results.push(index);
         }
