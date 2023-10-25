@@ -16,7 +16,7 @@ use teo_result::{Result, Error};
 use teo_runtime::model::object::input::Input;
 use teo_runtime::model::Model;
 use teo_runtime::model::Object;
-use teo_teon::Value;
+use teo_teon::value::Value;
 use teo_teon::teon;
 
 pub(crate) struct Execution { }
@@ -24,7 +24,6 @@ pub(crate) struct Execution { }
 impl Execution {
 
     pub(crate) fn row_to_value(model: &Model, row: &ResultRow, columns: &Vec<String>, dialect: SQLDialect) -> Value {
-
         Value::Dictionary(columns.iter().filter_map(|column_name| {
             if let Some(field) = model.field_with_column_name(column_name) {
                 if field.auto_increment && dialect == SQLDialect::PostgreSQL {

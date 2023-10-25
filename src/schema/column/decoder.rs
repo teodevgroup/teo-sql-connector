@@ -8,31 +8,27 @@ use crate::migration::sql::psql_is_auto_increment;
 use crate::schema::column::SQLColumn;
 use crate::schema::dialect::SQLDialect;
 use crate::schema::r#type::decoder::SQLTypeDecoder;
-use crate::core::field::field::Field;
-use crate::core::model::index::ModelIndex;
-use teo_runtime::model::Model;
-use crate::core::pipeline::Pipeline;
-use crate::core::property::Property;
-use crate::prelude::Value;
+use teo_runtime::model::{Model, Field, Index, Property};
+use teo_teon::Value;
 
 #[derive(Debug)]
 pub(crate) enum ColumnManipulation<'a> {
-    AddColumn(&'a SQLColumn, Option<Pipeline>, Option<Value>),
-    RemoveColumn(String, Option<Pipeline>),
+    AddColumn(&'a SQLColumn, Option<Value>),
+    RemoveColumn(String),
     RenameColumn{ old: String, new: String },
-    AlterColumn(&'a SQLColumn, &'a SQLColumn, Option<Pipeline>),
-    CreateIndex(&'a ModelIndex),
-    DropIndex(&'a ModelIndex),
+    AlterColumn(&'a SQLColumn, &'a SQLColumn),
+    CreateIndex(&'a Index),
+    DropIndex(&'a Index),
 }
 
 impl<'a> ColumnManipulation<'a> {
 
     pub(crate) fn get_field(&'a self, model: &'a Model) -> Option<&Field> {
         match self {
-            ColumnManipulation::AddColumn(c, _, __) => model.field(c.name()),
-            ColumnManipulation::RemoveColumn(c, _) => model.dropped_field(c.as_str()),
+            ColumnManipulation::AddColumn(c, _) => model.field(c.name()),
+            ColumnManipulation::RemoveColumn(c) => model.dropped_field(c.as_str()),
             ColumnManipulation::RenameColumn {old: _, new} => model.field(new.as_str()),
-            ColumnManipulation::AlterColumn(__, c, _) => model.field(c.name()),
+            ColumnManipulation::AlterColumn(__, c) => model.field(c.name()),
             ColumnManipulation::CreateIndex(_) => None,
             ColumnManipulation::DropIndex(_) => None,
         }
@@ -40,7 +36,7 @@ impl<'a> ColumnManipulation<'a> {
 
     pub(crate) fn priority(&self, model: &Model) -> i64 {
         match self {
-            ColumnManipulation::AddColumn(_, _, _) => -200,
+            ColumnManipulation::AddColumn(_, _) => -200,
             ColumnManipulation::CreateIndex(_) => -100,
             ColumnManipulation::DropIndex(_) => -100,
             _ => self.get_field(model).map(|f| f.migration().map(|m| m.priority.unwrap_or(0))).unwrap_or(Some(0)).unwrap_or(0)
@@ -49,7 +45,7 @@ impl<'a> ColumnManipulation<'a> {
 
     pub(crate) fn is_add_column_non_null(&self) -> bool {
         match self {
-            ColumnManipulation::AddColumn(c, _, __) => c.not_null,
+            ColumnManipulation::AddColumn(c, _) => c.not_null,
             _ => false,
         }
     }
@@ -60,8 +56,8 @@ pub(crate) struct ColumnDecoder { }
 impl ColumnDecoder {
 
     pub(crate) fn manipulations<'a>(db_columns: &'a HashSet<SQLColumn>, model_columns: &'a HashSet<SQLColumn>, db_indices: &'a HashSet<ModelIndex>, model_indices: &'a HashSet<Arc<ModelIndex>>, model: &Model) -> Vec<ColumnManipulation<'a>> {
-        let mut to_create: Vec<&ModelIndex> = vec![];
-        let mut to_drop: Vec<&ModelIndex> = vec![];
+        let mut to_create: Vec<&Index> = vec![];
+        let mut to_drop: Vec<&Index> = vec![];
         for index in db_indices {
             if !model_indices.contains(index) {
                 to_drop.push(index);

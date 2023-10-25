@@ -1,6 +1,7 @@
 use crate::schema::dialect::SQLDialect;
 use crate::schema::value::encode::ToSQLString;
-use crate::core::database::r#type::DatabaseType;
+use teo_runtime::database::r#type::DatabaseType;
+use crate::exts::database_type::DatabaseTypeToSQLString;
 
 pub(crate) mod decoder;
 
@@ -58,7 +59,7 @@ impl SQLColumn {
 impl ToSQLString for SQLColumn {
     fn to_string(&self, dialect: SQLDialect) -> String {
         let name = &self.name;
-        let t = self.r#type.to_string(dialect);
+        let t = self.r#type.to_sql_string();
         let not_null = if self.not_null { " NOT NULL" } else { " NULL" };
         let primary = if self.primary_key { " PRIMARY KEY" } else { "" };
         let default = if self.default.is_some() { " DEFAULT ".to_owned() + self.default.as_ref().unwrap().as_str() } else { "".to_owned() };
