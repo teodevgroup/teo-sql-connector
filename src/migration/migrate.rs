@@ -3,7 +3,7 @@ use std::fs;
 use std::sync::Arc;
 use itertools::Itertools;
 use maplit::hashset;
-use quaint_forked::pooled::{PooledConnection, Quaint};
+use quaint_forked::pooled::{Quaint};
 use quaint_forked::prelude::Queryable;
 use quaint_forked::ast::Query;
 use crate::migration::sql::{sqlite_auto_increment_query, sqlite_list_indices_query};
@@ -88,7 +88,7 @@ impl SQLMigration {
 
     // Migrate
 
-    pub(crate) async fn db_columns(conn: &PooledConnection, dialect: SQLDialect, table_name: &str) -> HashSet<SQLColumn> {
+    pub(crate) async fn db_columns(conn: &dyn Queryable, dialect: SQLDialect, table_name: &str) -> HashSet<SQLColumn> {
         match dialect {
             SQLDialect::SQLite => {
                 let columns_result = conn.query(Query::from(format!("pragma table_info('{}')", table_name))).await.unwrap();
@@ -115,7 +115,7 @@ impl SQLMigration {
         }
     }
 
-    pub(crate) async fn get_db_user_tables(dialect: SQLDialect, conn: &PooledConnection) -> Vec<String> {
+    pub(crate) async fn get_db_user_tables(dialect: SQLDialect, conn: &dyn Queryable) -> Vec<String> {
         match dialect {
             SQLDialect::MySQL => {
                 let sql = "SHOW TABLES";
@@ -136,19 +136,19 @@ impl SQLMigration {
         }
     }
 
-    pub(crate) async fn rename_table(dialect: SQLDialect, conn: &PooledConnection, old_name: &str, new_name: &str) {
+    pub(crate) async fn rename_table(dialect: SQLDialect, conn: &dyn Queryable, old_name: &str, new_name: &str) {
         let escape = dialect.escape();
         let sql = format!("ALTER TABLE {escape}{old_name}{escape} RENAME TO {escape}{new_name}{escape}");
         conn.execute(Query::from(sql)).await.unwrap();
     }
 
-    pub(crate) async fn table_has_records(dialect: SQLDialect, conn: &PooledConnection, table_name: &str) -> bool {
+    pub(crate) async fn table_has_records(dialect: SQLDialect, conn: &dyn Queryable, table_name: &str) -> bool {
         let escape = dialect.escape();
         let sql = format!("select * from {escape}{table_name}{escape} limit 1");
         !conn.query(Query::from(sql)).await.unwrap().is_empty()
     }
 
-    pub(crate) async fn migrate(dialect: SQLDialect, conn: &PooledConnection, models: Vec<&Model>, pconn: &dyn Transaction) -> Result<()> {
+    pub(crate) async fn migrate(dialect: SQLDialect, conn: &dyn Queryable, models: Vec<&Model>, pconn: &dyn Transaction) -> Result<()> {
         let mut db_tables = Self::get_db_user_tables(dialect, &conn).await;
         // compare each table and do migration
         for model in models {
@@ -205,7 +205,7 @@ impl SQLMigration {
                                 let drop = index.to_sql_drop(dialect, table_name);
                                 conn.execute(Query::from(drop)).await.unwrap();
                             }
-                            ColumnManipulation::AddColumn(column, action, default) => {
+                            ColumnManipulation::AddColumn(column, default) => {
                                 if column.not_null() && default.is_none() {
                                     // if any records, just raise here
                                     let has_records = Self::table_has_records(dialect, &conn, table_name).await;
@@ -219,12 +219,8 @@ impl SQLMigration {
                                 }
                                 let stmt = SQL::alter_table(table_name).add(c).to_string(dialect);
                                 conn.execute(Query::from(stmt)).await.unwrap();
-                                if let Some(action)= action {
-                                    let ctx = PipelineCtx::initial_state_with_value(Value::Null, pconn.clone(), None);
-                                    action.process(ctx).await.unwrap();
-                                }
                             }
-                            ColumnManipulation::AlterColumn(old_column, new_column, _action) => {
+                            ColumnManipulation::AlterColumn(old_column, new_column) => {
                                 if dialect != SQLDialect::PostgreSQL {
                                     let alter = SQL::alter_table(table_name).modify(new_column.clone().clone()).to_string(dialect);
                                     conn.execute(Query::from(alter)).await.unwrap();
@@ -235,11 +231,7 @@ impl SQLMigration {
                                     }
                                 }
                             }
-                            ColumnManipulation::RemoveColumn(name, action) => {
-                                if let Some(action)= action {
-                                    let ctx = PipelineCtx::initial_state_with_value(Value::Null, pconn.clone(), None);
-                                    action.process(ctx).await.unwrap();
-                                }
+                            ColumnManipulation::RemoveColumn(name) => {
                                 let stmt = SQL::alter_table(table_name).drop_column(name).to_string(dialect);
                                 conn.execute(Query::from(stmt)).await.unwrap();
                             }
@@ -260,15 +252,16 @@ impl SQLMigration {
         for table in db_tables {
             Self::drop_table(dialect, &conn, &table).await;
         }
+        Ok(())
     }
 
-    async fn drop_table(dialect: SQLDialect, conn: &PooledConnection, table: &str) {
+    async fn drop_table(dialect: SQLDialect, conn: &dyn Queryable, table: &str) {
         let escape = dialect.escape();
         let sql = format!("DROP TABLE {escape}{table}{escape}");
         conn.execute(Query::from(sql)).await.unwrap();
     }
 
-    async fn create_table(dialect: SQLDialect, conn: &PooledConnection, model: &Model) {
+    async fn create_table(dialect: SQLDialect, conn: &dyn Queryable, model: &Model) {
         // create table
         let stmt = SQLCreateTableStatement::from(model).to_string(dialect);
         conn.execute(Query::from(stmt)).await.unwrap();
@@ -317,7 +310,7 @@ impl SQLMigration {
         results.into_iter().collect()
     }
 
-    async fn db_indices(dialect: SQLDialect, conn: &PooledConnection, model: &Model) -> HashSet<Index> {
+    async fn db_indices(dialect: SQLDialect, conn: &dyn Queryable, model: &Model) -> HashSet<Index> {
         match dialect {
             SQLDialect::PostgreSQL => Self::psql_db_indices(conn, model).await,
             SQLDialect::MySQL => Self::mysql_db_indices(conn, model).await,
@@ -326,7 +319,7 @@ impl SQLMigration {
         }
     }
 
-    async fn mysql_db_indices(conn: &PooledConnection, model: &Model) -> HashSet<Index> {
+    async fn mysql_db_indices(conn: &dyn Queryable, model: &Model) -> HashSet<Index> {
         let table_name = &model.table_name;
         let sql = format!("SHOW INDEX FROM `{}`", table_name);
         let result_set = conn.query(Query::from(sql)).await.unwrap();
@@ -352,7 +345,7 @@ impl SQLMigration {
         indices.into_iter().collect()
     }
 
-    async fn psql_db_indices(conn: &PooledConnection, model: &Model) -> HashSet<Index> {
+    async fn psql_db_indices(conn: &dyn Queryable, model: &Model) -> HashSet<Index> {
         let table_name = &model.table_name;
         let sql = format!(r#"SELECT     irel.relname                           AS index_name,
            a.attname                              AS column_name,
@@ -404,7 +397,7 @@ GROUP BY   tnsp.nspname,
                 let item = Item::new(column_name, order, None);
                 indices.push(Index::new(
                     if is_primary { Type::Primary } else if is_unique { Type::Unique} else { Type::Index },
-                    Some(index_name.clone()),
+                    index_name.clone(),
                     vec![item],
                 ))
             }
@@ -412,7 +405,7 @@ GROUP BY   tnsp.nspname,
         indices.into_iter().collect()
     }
 
-    async fn sqlite_db_indices(conn: &PooledConnection, model: &Model) -> HashSet<Index> {
+    async fn sqlite_db_indices(conn: &dyn Queryable, model: &Model) -> HashSet<Index> {
         let table_name = &model.table_name;
         let sql = format!(r#"SELECT
     il.name as index_name,
@@ -455,7 +448,7 @@ ORDER BY 1,6"#, table_name);
                 let item = Item::new(column_name, order, None);
                 indices.push(Index::new(
                     if is_primary { Type::Primary } else if is_unique { Type::Unique} else { Type::Index },
-                    Some(index_name.as_str()),
+                    index_name.clone(),
                     vec![item],
                 ))
             }
@@ -470,7 +463,7 @@ ORDER BY 1,6"#, table_name);
             let row = result_set.into_single().unwrap();
             let column_name = row.get("name").unwrap().to_string().unwrap();
             let leaked = column_name;
-            let index = Index::new(Type::Primary, Some(format!("sqlite_autoindex_{table_name}_1")), vec![
+            let index = Index::new(Type::Primary, format!("sqlite_autoindex_{table_name}_1"), vec![
                 Item::new(leaked, Sort::Asc, None)
             ]);
             results.push(index);

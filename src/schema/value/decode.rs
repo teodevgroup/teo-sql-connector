@@ -3,7 +3,7 @@ use teo_teon::value::Value;
 use chrono::{NaiveDate, DateTime, Utc};
 use indexmap::IndexMap;
 use quaint_forked::prelude::{ResultRow, ResultSet, Value as QuaintValue};
-use teo_runtime::database::r#type::DatabaseType;
+use teo_parser::r#type::Type;
 
 pub(crate) struct RowDecoder { }
 
@@ -100,7 +100,7 @@ impl RowDecoder {
         }
     }
 
-    pub(crate) fn decode_value(r#type: &DatabaseType, optional: bool, value: Option<&quaint_forked::Value>, dialect: SQLDialect) -> Value {
+    pub(crate) fn decode_value(r#type: &Type, optional: bool, value: Option<&quaint_forked::Value>, dialect: SQLDialect) -> Value {
         if optional {
             if value.is_none() {
                 return Value::Null;
@@ -121,7 +121,7 @@ impl RowDecoder {
                 return Value::Null;
             }
         }
-        if r#type.is_int32() {
+        if r#type.is_int() {
             if let Some(v) = value.as_i32() {
                 return Value::Int(v);
             } else {
@@ -137,7 +137,7 @@ impl RowDecoder {
                 return Value::Null;
             }
         }
-        if r#type.is_float32() || r#type.is_float64() {
+        if r#type.is_float32() || r#type.is_float() {
             if let Some(f64_val) = value.as_f64() {
                 return Value::number_from_f64(f64_val, r#type);
             } else if let Some(f32_val) = value.as_f32() {
@@ -203,15 +203,15 @@ impl RowDecoder {
                 return Value::Null;
             }
         }
-        if r#type.is_vec() {
+        if r#type.is_array() {
             if let Some(vals) = value.as_array() {
-                let inner = r#type.element_field().unwrap();
-                return Value::Array(vals.iter().map(|v| Self::decode_value(inner.field_type(), inner.is_optional(), Some(v), dialect)).collect());
+                let inner = r#type.as_array().unwrap();
+                return Value::Array(vals.iter().map(|v| Self::decode_value(inner.r#type(), inner.is_optional(), Some(v), dialect)).collect());
             } else {
                 return Value::Null;
             }
         }
-        if r#type.is_enum() {
+        if r#type.is_enum_variant() {
             match value {
                 QuaintValue::Enum(v) => {
                     if let Some(v) = v {
@@ -233,7 +233,7 @@ impl RowDecoder {
         panic!("Unhandled database when decoding type.")
     }
 
-    pub(crate) fn decode(r#type: &DatabaseType, optional: bool, row: &ResultRow, column_name: &str, dialect: SQLDialect) -> Value {
+    pub(crate) fn decode(r#type: &Type, optional: bool, row: &ResultRow, column_name: &str, dialect: SQLDialect) -> Value {
         let result = row.get(column_name);
         Self::decode_value(r#type, optional, result.clone(), dialect)
     }

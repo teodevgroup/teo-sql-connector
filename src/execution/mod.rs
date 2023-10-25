@@ -1,13 +1,12 @@
 use std::borrow::Cow;
 use array_tool::vec::Uniq;
 use std::collections::HashMap;
-use std::sync::Arc;
 use async_recursion::async_recursion;
 use bigdecimal::num_traits::real::Real;
 use indexmap::IndexMap;
 use quaint_forked::prelude::{Queryable, ResultRow};
 use quaint_forked::ast::{Query as QuaintQuery};
-use quaint_forked::connector::OwnedTransaction;
+use teo_parser::r#type::Type;
 use crate::query::Query;
 use crate::schema::dialect::SQLDialect;
 use crate::schema::value::decode::RowDecoder;
@@ -19,6 +18,7 @@ use teo_runtime::connection::transaction;
 use teo_runtime::model::field::column_named::ColumnNamed;
 use teo_runtime::model::field::is_optional::IsOptional;
 use teo_runtime::model::field::named::Named;
+use teo_runtime::model::field::typed::Typed;
 use teo_runtime::model::object::input::Input;
 use teo_runtime::model::Model;
 use teo_runtime::model::Object;
@@ -37,10 +37,10 @@ impl Execution {
                 if field.auto_increment && dialect == SQLDialect::PostgreSQL {
                     Some((field.name().to_owned(), RowDecoder::decode_serial(field.is_optional(), row, column_name)))
                 } else {
-                    Some((field.name().to_owned(), RowDecoder::decode(field.field_type(), field.is_optional(), row, column_name, dialect)))
+                    Some((field.name().to_owned(), RowDecoder::decode(field.r#type(), field.is_optional(), row, column_name, dialect)))
                 }
             } else if let Some(property) = model.property(column_name) {
-                Some((property.column_name().to_owned(), RowDecoder::decode(property.field_type(), property.is_optional(), row, column_name, dialect)))
+                Some((property.column_name().to_owned(), RowDecoder::decode(property.r#type(), property.is_optional(), row, column_name, dialect)))
             } else if column_name.contains(".") {
                 let names: Vec<&str> = column_name.split(".").collect();
                 let relation_name = names[0];
@@ -50,7 +50,7 @@ impl Execution {
                 } else {
                     let opposite_model = namespace.model_at_path(&vec![relation_name]).unwrap();
                     let field = opposite_model.field(field_name).unwrap();
-                    Some((column_name.to_owned(), RowDecoder::decode(field.field_type(), field.is_optional(), row, column_name, dialect)))
+                    Some((column_name.to_owned(), RowDecoder::decode(field.r#type(), field.is_optional(), row, column_name, dialect)))
                 }
             } else {
                 panic!("Unhandled key {}.", column_name);
@@ -70,27 +70,27 @@ impl Execution {
                     retval.insert(group.to_string(), Value::Dictionary(IndexMap::new()));
                 }
                 if group == "_count" { // force i64
-                    let count: i64 = row.get(result_key).unwrap().as_i64().unwrap();
+                    let count: i64 = row.get(result_key).unwrap().as_int64().unwrap();
                     retval.get_mut(group).unwrap().as_dictionary_mut().unwrap().insert(field_name.to_string(), teon!(count));
                 } else if group == "_avg" || group == "_sum" { // force f64
-                    let v = RowDecoder::decode(&dialect.float64_type(), true, &row, result_key, dialect);
+                    let v = RowDecoder::decode(&Type::Float, true, &row, result_key, dialect);
                     retval.get_mut(group).unwrap().as_dictionary_mut().unwrap().insert(field_name.to_string(), v);
                 } else { // field type
                     let field = model.field(field_name).unwrap();
-                    let v = RowDecoder::decode(field.field_type(), true, &row, result_key, dialect);
+                    let v = RowDecoder::decode(field.r#type(), true, &row, result_key, dialect);
                     retval.get_mut(group).unwrap().as_dictionary_mut().unwrap().insert(field_name.to_string(), v);
                 }
             } else if let Some(field) = model.field_with_column_name(result_key) {
-                retval.insert(field.name().to_owned(), RowDecoder::decode(field.field_type(), field.is_optional(), row, result_key, dialect));
+                retval.insert(field.name().to_owned(), RowDecoder::decode(field.r#type(), field.is_optional(), row, result_key, dialect));
             } else if let Some(property) = model.property(result_key) {
-                retval.insert(property.name().to_owned(), RowDecoder::decode(property.field_type(), property.is_optional(), row, result_key, dialect));
+                retval.insert(property.name().to_owned(), RowDecoder::decode(property.r#type(), property.is_optional(), row, result_key, dialect));
             }
         }
         Value::Dictionary(retval)
     }
 
-    pub(crate) async fn query_objects<'a, Q>(conn: &'a Q, model: &'static Model, finder: &'a Value, dialect: SQLDialect, action: Action, transaction_ctx: transaction::Ctx, req_ctx: Option<request::Ctx>) -> Result<Vec<Object>> where Q: Queryable {
-        let values = Self::query(conn, model, finder, dialect).await?;
+    pub(crate) async fn query_objects<'a>(namespace: &Namespace, conn: &'a dyn Queryable, model: &'static Model, finder: &'a Value, dialect: SQLDialect, action: Action, transaction_ctx: transaction::Ctx, req_ctx: Option<request::Ctx>) -> Result<Vec<Object>> {
+        let values = Self::query(namespace, conn, model, finder, dialect).await?;
         let select = finder.as_dictionary().unwrap().get("select");
         let include = finder.as_dictionary().unwrap().get("include");
         let mut results = vec![];
@@ -103,10 +103,10 @@ impl Execution {
     }
 
     #[async_recursion]
-    async fn query_internal<Q>(namespace: &Namespace, conn: &Q, model: &Model, value: &Value, dialect: SQLDialect, additional_where: Option<String>, additional_left_join: Option<String>, join_table_results: Option<Vec<String>>, force_negative_take: bool, additional_distinct: Option<Vec<String>>) -> Result<Vec<Value>> where Q: Queryable {
+    async fn query_internal(namespace: &Namespace, conn: &dyn Queryable, model: &Model, value: &Value, dialect: SQLDialect, additional_where: Option<String>, additional_left_join: Option<String>, join_table_results: Option<Vec<String>>, force_negative_take: bool, additional_distinct: Option<Vec<String>>) -> Result<Vec<Value>> {
         let _select = value.get("select");
         let include = value.get("include");
-        let original_distinct = value.get("distinct").map(|v| if v.as_vec().unwrap().is_empty() { None } else { Some(v.as_vec().unwrap()) }).flatten();
+        let original_distinct = value.get("distinct").map(|v| if v.as_array().unwrap().is_empty() { None } else { Some(v.as_array().unwrap()) }).flatten();
         let distinct = Self::merge_distinct(original_distinct, additional_distinct);
         let skip = value.get("skip");
         let take = value.get("take");
@@ -116,7 +116,7 @@ impl Execution {
         } else {
             Cow::Borrowed(value)
         };
-        let stmt = Query::build(model, value_for_build.as_ref(), dialect, additional_where, additional_left_join, join_table_results, force_negative_take);
+        let stmt = Query::build(namespace, model, value_for_build.as_ref(), dialect, additional_where, additional_left_join, join_table_results, force_negative_take);
         // println!("sql query stmt: {}", &stmt);
         let reverse = Input::has_negative_take(value);
         let rows = match conn.query(QuaintQuery::from(stmt)).await {
@@ -130,7 +130,7 @@ impl Execution {
             return Ok(vec![])
         }
         let columns = rows.columns().clone();
-        let mut results = rows.into_iter().map(|row| Self::row_to_value(model, &row, &columns, dialect)).collect::<Vec<Value>>();
+        let mut results = rows.into_iter().map(|row| Self::row_to_value(namespace, model, &row, &columns, dialect)).collect::<Vec<Value>>();
         if reverse {
             results.reverse();
         }
@@ -141,8 +141,8 @@ impl Execution {
             });
         }
         if should_in_memory_take_skip {
-            let skip = skip.map(|s| s.as_i64().unwrap()).unwrap_or(0) as usize;
-            let take = take.map(|s| s.as_i64().unwrap().abs() as u64).unwrap_or(0) as usize;
+            let skip = skip.map(|s| s.as_int64().unwrap()).unwrap_or(0) as usize;
+            let take = take.map(|s| s.as_int64().unwrap().abs() as u64).unwrap_or(0) as usize;
             results = results.into_iter().enumerate().filter(|(i, _r)| {
                 *i >= skip && *i < (skip + take)
             }).map(|(_i, r)| r.clone()).collect();
@@ -152,11 +152,11 @@ impl Execution {
         }
         if let Some(include) = include.map(|i| i.as_dictionary().unwrap()) {
             for (key, value) in include {
-                let skip = value.as_dictionary().map(|m| m.get("skip")).flatten().map(|v| v.as_i64().unwrap());
-                let take = value.as_dictionary().map(|m| m.get("take")).flatten().map(|v| v.as_i64().unwrap());
+                let skip = value.as_dictionary().map(|m| m.get("skip")).flatten().map(|v| v.as_int64().unwrap());
+                let take = value.as_dictionary().map(|m| m.get("take")).flatten().map(|v| v.as_int64().unwrap());
                 let take_abs = take.map(|t| t.abs() as u64);
                 let negative_take = take.map(|v| v.is_negative()).unwrap_or(false);
-                let inner_distinct = value.as_dictionary().map(|m| m.get("distinct")).flatten().map(|v| if v.as_vec().unwrap().is_empty() { None } else { Some(v.as_vec().unwrap()) }).flatten();
+                let inner_distinct = value.as_dictionary().map(|m| m.get("distinct")).flatten().map(|v| if v.as_array().unwrap().is_empty() { None } else { Some(v.as_array().unwrap()) }).flatten();
                 let relation = model.relation(key).unwrap();
                 let (opposite_model, _) = namespace.opposite_relation(relation);
                 if !relation.has_join_table() {
@@ -180,7 +180,7 @@ impl Execution {
                         }).collect::<Vec<String>>().join(","))
                     };
                     let where_addition = Query::where_item(&names, "IN", &values);
-                    let nested_query = if value.is_hashmap() {
+                    let nested_query = if value.is_dictionary() {
                         Self::without_paging_and_skip_take_distinct(value)
                     } else {
                         Cow::Owned(teon!({}))
@@ -235,7 +235,7 @@ impl Execution {
                         join_parts.push(format!("t.{} = j.{}", reference_column_name.escape(dialect), field_column_name.escape(dialect)));
                     }
                     let joins = join_parts.join(" AND ");
-                    let left_join = format!("{} AS j ON {}", through_&model.table_name, joins);
+                    let left_join = format!("{} AS j ON {}", &through_model.table_name, joins);
                     let (through_table, through_relation) = namespace.through_relation(relation);
                     let names = if through_relation.len() == 1 { // todo: column name
                         format!("j.{}", through_table.field(through_relation.fields().get(0).unwrap()).unwrap().column_name().escape(dialect))
@@ -254,7 +254,7 @@ impl Execution {
                         format!("(VALUES {})", pairs)
                     };
                     let where_addition = Query::where_item(&names, "IN", &values);
-                    let nested_query = if value.is_hashmap() {
+                    let nested_query = if value.is_dictionary() {
                         Self::without_paging_and_skip_take(value)
                     } else {
                         Cow::Owned(teon!({}))
@@ -274,7 +274,7 @@ impl Execution {
                     } else {
                         None
                     };
-                    let included_values = Self::query_internal(conn, opposite_model, &nested_query, dialect, Some(where_addition), Some(left_join), Some(join_table_results), negative_take, additional_inner_distinct).await?;
+                    let included_values = Self::query_internal(namespace, conn, opposite_model, &nested_query, dialect, Some(where_addition), Some(left_join), Some(join_table_results), negative_take, additional_inner_distinct).await?;
                     // println!("see included {:?}", included_values);
                     for result in results.iter_mut() {
                         result.as_dictionary_mut().unwrap().insert(relation.name().to_owned(), Value::Array(vec![]));
@@ -316,12 +316,12 @@ impl Execution {
         Ok(results)
     }
 
-    pub(crate) async fn query<Q>(conn: &Q, model: &Model, finder: &Value, dialect: SQLDialect) -> Result<Vec<Value>> where Q: Queryable {
-       Self::query_internal(conn, model, finder, dialect, None, None, None, false, None).await
+    pub(crate) async fn query(namespace: &Namespace, conn: &dyn Queryable, model: &Model, finder: &Value, dialect: SQLDialect) -> Result<Vec<Value>> {
+       Self::query_internal(namespace, conn, model, finder, dialect, None, None, None, false, None).await
     }
 
-    pub(crate) async fn query_aggregate<Q>(conn: &Q, model: &Model, finder: &Value, dialect: SQLDialect) -> Result<Value> where Q: Queryable {
-        let stmt = Query::build_for_aggregate(model, finder, dialect);
+    pub(crate) async fn query_aggregate(namespace: &Namespace, conn: &dyn Queryable, model: &Model, finder: &Value, dialect: SQLDialect) -> Result<Value> {
+        let stmt = Query::build_for_aggregate(namespace, model, finder, dialect);
         match conn.query(QuaintQuery::from(&*stmt)).await {
             Ok(result_set) => {
                 let columns = result_set.columns().clone();
@@ -335,8 +335,8 @@ impl Execution {
         }
     }
 
-    pub(crate) async fn query_group_by<Q>(conn: &Q, model: &Model, finder: &Value, dialect: SQLDialect) -> Result<Value> where Q: Queryable {
-        let stmt = Query::build_for_group_by(model, finder, dialect);
+    pub(crate) async fn query_group_by(namespace: &Namespace, conn: &dyn Queryable, model: &Model, finder: &Value, dialect: SQLDialect) -> Result<Value> {
+        let stmt = Query::build_for_group_by(namespace, model, finder, dialect);
         let rows = match conn.query(QuaintQuery::from(stmt)).await {
             Ok(rows) => rows,
             Err(err) => {
@@ -350,12 +350,12 @@ impl Execution {
         }).collect::<Vec<Value>>()))
     }
 
-    pub(crate) async fn query_count<Q>(conn: &Q, model: &Model, finder: &Value, dialect: SQLDialect) -> Result<u64> where Q: Queryable {
-        let stmt = Query::build_for_count(model, finder, dialect, None, None, None, false);
+    pub(crate) async fn query_count(namespace: &Namespace, conn: &dyn Queryable, model: &Model, finder: &Value, dialect: SQLDialect) -> Result<u64> {
+        let stmt = Query::build_for_count(namespace, model, finder, dialect, None, None, None, false);
         match conn.query(QuaintQuery::from(stmt)).await {
             Ok(result) => {
                 let result = result.into_iter().next().unwrap();
-                let count: i64 = result.into_iter().next().unwrap().as_i64().unwrap();
+                let count: i64 = result.into_iter().next().unwrap().as_int64().unwrap();
                 Ok(count as u64)
             },
             Err(err) => {

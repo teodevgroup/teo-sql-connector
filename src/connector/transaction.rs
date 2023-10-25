@@ -1,3 +1,4 @@
+use std::fmt::{Debug, Formatter};
 use std::sync::Arc;
 use async_trait::async_trait;
 use quaint_forked::{prelude::*, ast::Query as QuaintQuery};
@@ -24,13 +25,21 @@ use teo_result::{Result, Error};
 use teo_runtime::connection::transaction;
 use teo_runtime::model::field::column_named::ColumnNamed;
 use teo_runtime::connection::transaction::Transaction;
+use teo_runtime::model::field::typed::Typed;
 use teo_runtime::request::Ctx;
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct SQLTransaction {
     pub dialect: SQLDialect,
     pub conn: Arc<PooledConnection>,
     pub tran: Option<Arc<OwnedTransaction>>,
+}
+
+impl Debug for SQLTransaction {
+
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        todo!()
+    }
 }
 
 impl SQLTransaction {
@@ -43,7 +52,7 @@ impl SQLTransaction {
 
 impl SQLTransaction {
 
-    fn queryable<Q>(&self) -> &Q where Q: Queryable {
+    fn queryable(&self) -> &dyn Queryable {
         if let Some(tran) = &self.tran {
             tran.as_ref()
         } else {
@@ -66,18 +75,18 @@ impl SQLTransaction {
     async fn create_object(&self, object: &Object) -> Result<()> {
         let model = object.model();
         let keys = object.keys_for_save();
-        let auto_keys = model.auto_keys();
+        let auto_keys = &model.cache.auto_keys;
         let mut values: Vec<(&str, String)> = vec![];
         for key in keys {
             if let Some(field) = model.field(key) {
                 let column_name = field.column_name();
                 let val = object.get_value(key).unwrap();
                 if !(field.auto_increment && val.is_null()) {
-                    values.push((column_name, PSQLArrayToSQLString::to_string_with_ft(&val, self.dialect(), field.field_type())));
+                    values.push((column_name, PSQLArrayToSQLString::to_string_with_ft(&val, self.dialect(), field.r#type())));
                 }
             } else if let Some(property) = model.property(key) {
                 let val: Value = object.get_property(key).await.unwrap();
-                values.push((key, PSQLArrayToSQLString::to_string_with_ft(&val, self.dialect(), property.field_type())));
+                values.push((key, PSQLArrayToSQLString::to_string_with_ft(&val, self.dialect(), property.r#type())));
             }
         }
         let value_refs: Vec<(&str, &str)> = values.iter().map(|(k, v)| (*k, v.as_str())).collect();
@@ -106,7 +115,7 @@ impl SQLTransaction {
                 Ok(result) => {
                     if let Some(id) = result.last_insert_id() {
                         for key in auto_keys {
-                            if model.field(key).unwrap().field_type().is_int32() {
+                            if model.field(key).unwrap().r#type().is_int() {
                                 object.set_value(key, Value::Int(id as i32))?;
                             } else {
                                 object.set_value(key, Value::Int64(id as i64))?;
@@ -142,11 +151,11 @@ impl SQLTransaction {
                     }
                 } else {
                     let val = object.get_value(key).unwrap();
-                    values.push((column_name, PSQLArrayToSQLString::to_string_with_ft(&val, self.dialect(), field.field_type())));
+                    values.push((column_name, PSQLArrayToSQLString::to_string_with_ft(&val, self.dialect(), field.r#type())));
                 }
             } else if let Some(property) = model.property(key) {
                 let val: Value = object.get_property(key).await.unwrap();
-                values.push((key, PSQLArrayToSQLString::to_string_with_ft(&val, self.dialect(), property.field_type())));
+                values.push((key, PSQLArrayToSQLString::to_string_with_ft(&val, self.dialect(), property.r#type())));
             }
         }
         let value_refs: Vec<(&str, &str)> = values.iter().map(|(k, v)| (*k, v.as_str())).collect();
@@ -161,7 +170,7 @@ impl SQLTransaction {
                 return Err(Error::unknown_database_write_error());
             }
         }
-        let result = Execution::query(self.queryable(), model, &teon!({"where": identifier, "take": 1}), self.dialect()).await?;
+        let result = Execution::query(object.namespace(), self.queryable(), model, &teon!({"where": identifier, "take": 1}), self.dialect()).await?;
         if result.is_empty() {
             Err(Error::object_not_found())
         } else {
@@ -197,7 +206,7 @@ impl SQLTransaction {
 impl Transaction for SQLTransaction {
 
     async fn migrate(&self, models: Vec<&Model>, reset_database: bool) -> Result<()> {
-     SQLMigration::migrate(self.dialect(), self.queryable(), models, self).await
+        SQLMigration::migrate(self.dialect(), self.queryable(), models, self).await
     }
 
     async fn purge(&self, models: Vec<&Model>) -> Result<()> {
@@ -250,7 +259,7 @@ impl Transaction for SQLTransaction {
     }
 
     async fn find_unique(&self, model: &Model, finder: &Value, ignore_select_and_include: bool, action: Action, transaction_ctx: transaction::Ctx, req_ctx: Option<Ctx>) -> Result<Option<Object>> {
-        let objects = Execution::query_objects(self.queryable(), model, finder, self.dialect(), action, transaction_ctx, req_ctx).await?;
+        let objects = Execution::query_objects(transaction_ctx.namespace(), self.queryable(), model, finder, self.dialect(), action, transaction_ctx, req_ctx).await?;
         if objects.is_empty() {
             Ok(None)
         } else {
@@ -259,22 +268,22 @@ impl Transaction for SQLTransaction {
     }
 
     async fn find_many(&self, model: &Model, finder: &Value, ignore_select_and_include: bool, action: Action, transaction_ctx: transaction::Ctx, req_ctx: Option<Ctx>) -> Result<Vec<Object>> {
-        Execution::query_objects(self.queryable(), model, finder, self.dialect(), action, transaction_ctx, req_ctx).await
+        Execution::query_objects(transaction_ctx.namespace(), self.queryable(), model, finder, self.dialect(), action, transaction_ctx, req_ctx).await
     }
 
-    async fn count(&self, model: &Model, finder: &Value) -> Result<usize> {
-        match Execution::query_count(self.queryable(), model, finder, self.dialect()).await {
+    async fn count(&self, model: &Model, finder: &Value, transaction_ctx: transaction::Ctx) -> Result<usize> {
+        match Execution::query_count(transaction_ctx.namespace(), self.queryable(), model, finder, self.dialect()).await {
             Ok(c) => Ok(c as usize),
             Err(e) => Err(e),
         }
     }
 
-    async fn aggregate(&self, model: &Model, finder: &Value) -> Result<Value> {
-        Execution::query_aggregate(self.queryable(), model, finder, self.dialect()).await
+    async fn aggregate(&self, model: &Model, finder: &Value, transaction_ctx: transaction::Ctx) -> Result<Value> {
+        Execution::query_aggregate(transaction_ctx.namespace(), self.queryable(), model, finder, self.dialect()).await
     }
 
-    async fn group_by(&self, model: &Model, finder: &Value) -> Result<Value> {
-        Execution::query_group_by(self.queryable(), model, finder, self.dialect()).await
+    async fn group_by(&self, model: &Model, finder: &Value, transaction_ctx: transaction::Ctx) -> Result<Value> {
+        Execution::query_group_by(transaction_ctx.namespace(), self.queryable(), model, finder, self.dialect()).await
     }
 
     async fn is_committed(&self) -> bool {

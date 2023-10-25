@@ -176,7 +176,7 @@ impl ColumnDecoder {
         let columns_iter: Vec<ResultRow> = columns.into_iter().collect();
         let indices_iter: Vec<ResultRow> = indices.into_iter().collect();
         let primary_is_single = columns_iter.iter().filter(|r| {
-            r.get("pk").unwrap().as_i64().unwrap() > 0
+            r.get("pk").unwrap().as_int64().unwrap() > 0
         }).count() == 1;
         let mut result = hashset!{};
         for column in &columns_iter {

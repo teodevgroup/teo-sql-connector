@@ -6,3 +6,4 @@ pub mod execution;
 pub mod query;
 pub mod exts;
 pub(crate) mod url;
+pub mod coder;
