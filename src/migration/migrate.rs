@@ -16,10 +16,12 @@ use crate::schema::dialect::SQLDialect;
 use teo_runtime::model::Model;
 use crate::schema::value::encode::ToSQLString;
 use teo_runtime::connection::connection::Connection;
+use teo_runtime::connection::transaction::Transaction;
 use teo_runtime::sort::Sort;
 use teo_runtime::model::{Index, index::Item};
 use teo_runtime::index::Type;
 use teo_teon::value::Value;
+use teo_result::{Result};
 
 pub(crate) struct SQLMigration { }
 
@@ -145,7 +147,7 @@ impl SQLMigration {
         !conn.query(Query::from(sql)).await.unwrap().is_empty()
     }
 
-    pub(crate) async fn migrate(dialect: SQLDialect, conn: &PooledConnection, models: Vec<&Model>, pconn: Arc<dyn Connection>) {
+    pub(crate) async fn migrate(dialect: SQLDialect, conn: &PooledConnection, models: Vec<&Model>, pconn: &dyn Transaction) -> Result<()> {
         let mut db_tables = Self::get_db_user_tables(dialect, &conn).await;
         // compare each table and do migration
         for model in models {
@@ -297,8 +299,8 @@ impl SQLMigration {
         result
     }
 
-    fn normalized_model_indices(indices: &Vec<Arc<ModelIndex>>, dialect: SQLDialect, table_name: &str) -> HashSet<Arc<ModelIndex>> {
-        let mut results: Vec<Arc<ModelIndex>> = indices.iter().map(|index| {
+    fn normalized_model_indices(indices: &Vec<Arc<Index>>, dialect: SQLDialect, table_name: &str) -> HashSet<Arc<ModelIndex>> {
+        let mut results: Vec<Arc<Index>> = indices.iter().map(|index| {
             let mut index = index.as_ref().clone();
             let sql_name_cow = index.sql_name(table_name, dialect);
             let sql_name = sql_name_cow.as_ref().to_owned();

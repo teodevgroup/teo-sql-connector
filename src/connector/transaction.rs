@@ -1,5 +1,4 @@
 use std::sync::Arc;
-use std::sync::atomic::Ordering;
 use async_trait::async_trait;
 use quaint_forked::{prelude::*, ast::Query as QuaintQuery};
 use quaint_forked::error::DatabaseConstraint;
@@ -22,8 +21,11 @@ use teo_runtime::model::Object;
 use teo_runtime::connection::connection::Connection;
 use teo_teon::{teon, Value};
 use teo_result::{Result, Error};
+use teo_runtime::model::field::column_named::ColumnNamed;
+use teo_runtime::connection::transaction::Transaction;
+use teo_runtime::request::Ctx;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct SQLTransaction {
     pub dialect: SQLDialect,
     pub conn: Arc<PooledConnection>,
@@ -183,23 +185,22 @@ impl SQLTransaction {
 }
 
 #[async_trait]
-impl Connection for SQLTransaction {
+impl Transaction for SQLTransaction {
 
-    async fn migrate(self: Arc<Self>, models: Vec<&Model>, _reset_database: bool) -> Result<()> {
-        SQLMigration::migrate(self.dialect(), self.conn(), models, self.clone()).await;
-        Ok(())
+    async fn migrate(&self, models: Vec<&Model>, reset_database: bool) -> Result<()> {
+     SQLMigration::migrate(self.dialect(), self.conn(), models, self).await
     }
 
-    async fn purge(&self) -> Result<()> {
-        for model in AppCtx::get().unwrap().models() {
+    async fn purge(&self, models: Vec<&Model>) -> Result<()> {
+        for model in models {
             let escape = self.dialect().escape();
             self.conn().execute(QuaintQuery::from(format!("DELETE FROM {escape}{}{escape}", model.table_name()))).await.unwrap();
         }
         Ok(())
     }
 
-    async fn query_raw(&self, query: &Value) -> Result<Value> {
-        let result = self.conn().query(QuaintQuery::from(query.as_str().unwrap())).await;
+    async fn query_raw(&self, value: &Value) -> Result<Value> {
+        let result = self.conn().query(QuaintQuery::from(value.as_str().unwrap())).await;
         if result.is_err() {
             let err = result.unwrap_err();
             let msg = err.original_message();
@@ -215,8 +216,7 @@ impl Connection for SQLTransaction {
     }
 
     async fn save_object(&self, object: &Object) -> Result<()> {
-        let is_new = object.inner.is_new.load(Ordering::SeqCst);
-        if is_new {
+        if object.is_new() {
             self.create_object(object).await
         } else {
             self.update_object(object).await
@@ -224,7 +224,7 @@ impl Connection for SQLTransaction {
     }
 
     async fn delete_object(&self, object: &Object) -> Result<()> {
-        if object.inner.is_new.load(Ordering::SeqCst) {
+        if object.is_new() {
             return Err(Error::object_is_not_saved_thus_cant_be_deleted());
         }
         let model = object.model();
@@ -240,7 +240,7 @@ impl Connection for SQLTransaction {
         }
     }
 
-    async fn find_unique<'a>(&'a self, model: &'static Model, finder: &'a Value, _mutation_mode: bool, action: Action, action_source: Initiator) -> Result<Option<Object>> {
+    async fn find_unique(&self, model: &Model, finder: &Value, ignore_select_and_include: bool, action: Action, req_ctx: Option<Ctx>) -> Result<Option<Object>> {
         let objects = Execution::query_objects(self.conn(), model, finder, self.dialect(), action, action_source.clone(), Arc::new(self.clone())).await?;
         if objects.is_empty() {
             Ok(None)
@@ -249,7 +249,7 @@ impl Connection for SQLTransaction {
         }
     }
 
-    async fn find_many<'a>(&'a self, model: &'static Model, finder: &'a Value, _mutation_mode: bool, action: Action, action_source: Initiator) -> Result<Vec<Object>> {
+    async fn find_many(&self, model: &Model, finder: &Value, ignore_select_and_include: bool, action: Action, req_ctx: Option<Ctx>) -> Result<Vec<Object>> {
         Execution::query_objects(self.conn(), model, finder, self.dialect(), action, action_source, Arc::new(self.clone())).await
     }
 
@@ -268,12 +268,8 @@ impl Connection for SQLTransaction {
         Execution::query_group_by(self.conn(), model, finder, self.dialect()).await
     }
 
-    async fn transaction(&self) -> Result<Arc<dyn Connection>> {
-        Ok(Arc::new(SQLTransaction {
-            dialect: self.dialect,
-            conn: self.conn.clone(),
-            tran: Some(Arc::new(start_owned_transaction(self.conn.clone(), None).await.unwrap()))
-        }))
+    async fn is_committed(&self) -> bool {
+        todo!()
     }
 
     async fn commit(&self) -> Result<()> {
@@ -281,5 +277,13 @@ impl Connection for SQLTransaction {
             tran.commit().await.unwrap()
         }
         Ok(())
+    }
+
+    async fn spawn(&self) -> Result<Arc<dyn Transaction>> {
+        Ok(Arc::new(SQLTransaction {
+            dialect: self.dialect,
+            conn: self.conn.clone(),
+            tran: Some(Arc::new(start_owned_transaction(self.conn.clone(), None).await.unwrap()))
+        }))
     }
 }
