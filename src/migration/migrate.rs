@@ -17,8 +17,8 @@ use teo_runtime::model::Model;
 use crate::schema::value::encode::ToSQLString;
 use teo_runtime::connection::connection::Connection;
 use teo_runtime::sort::Sort;
-use crate::core::model::index::{ModelIndex, ModelIndexItem, ModelIndexType};
-use crate::core::pipeline::ctx::PipelineCtx;
+use teo_runtime::model::{Index, index::Item};
+use teo_runtime::index::Type;
 use teo_teon::value::Value;
 
 pub(crate) struct SQLMigration { }

@@ -7,10 +7,8 @@ use crate::connector::connection::SQLConnection;
 use crate::migration::migrate::SQLMigration;
 use crate::schema::dialect::SQLDialect;
 use crate::url::url_utils;
-use crate::core::connector::connection::Connection;
-use crate::core::connector::connector::Connector;
-use crate::core::error::{Error, RuntimeError};
-use crate::core::result::Result;
+use teo_runtime::connection::connection::Connection;
+use teo_result::{Error, Result};
 
 pub(crate) struct SQLConnector {
     dialect: SQLDialect,

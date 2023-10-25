@@ -2,8 +2,8 @@ use bigdecimal::BigDecimal;
 use chrono::{NaiveDate, Utc, DateTime, SecondsFormat};
 use itertools::Itertools;
 use crate::schema::dialect::SQLDialect;
-use crate::core::field::r#type::{FieldType, FieldTypeOwner};
-use crate::prelude::Value;
+use teo_parser::r#type::Type;
+use teo_teon::Value;
 
 pub trait ToSQLString {
     fn to_string(&self, dialect: SQLDialect) -> String;
@@ -20,20 +20,18 @@ impl TypeOrNull for &str {
 }
 
 pub(crate) trait ValueToSQLString {
-    fn to_sql_string<'a>(&self, r#type: &FieldType, optional: bool, dialect: SQLDialect) -> String;
-    fn to_sql_string_array_arg<'a>(&self, r#type: &FieldType, optional: bool, dialect: SQLDialect) -> String;
+    fn to_sql_string<'a>(&self, r#type: &Type, optional: bool, dialect: SQLDialect) -> String;
+    fn to_sql_string_array_arg<'a>(&self, r#type: &Type, optional: bool, dialect: SQLDialect) -> String;
 }
 
 impl ValueToSQLString for Value {
-    fn to_sql_string<'a>(&self, r#type: &FieldType, optional: bool, dialect: SQLDialect) -> String {
+    fn to_sql_string<'a>(&self, r#type: &Type, optional: bool, dialect: SQLDialect) -> String {
         if optional {
             if self.is_null() {
                 return "NULL".to_owned()
             }
         }
         match r#type {
-            #[cfg(feature = "data-source-mongodb")]
-            FieldType::ObjectId => panic!("SQL doesn't support `ObjectId`."),
             FieldType::String => ToSQLInputDialect::to_sql_input(&self.as_str().unwrap(), dialect),
             FieldType::Bool => self.as_bool().unwrap().to_sql_input(),
             FieldType::I32 | FieldType::I64 |
