@@ -2,7 +2,7 @@ use bigdecimal::BigDecimal;
 use chrono::{NaiveDate, Utc, DateTime, SecondsFormat};
 use itertools::Itertools;
 use crate::schema::dialect::SQLDialect;
-use teo_parser::r#type::Type;
+use teo_runtime::database::r#type::DatabaseType;
 use teo_teon::Value;
 
 pub trait ToSQLString {
@@ -20,12 +20,12 @@ impl TypeOrNull for &str {
 }
 
 pub(crate) trait ValueToSQLString {
-    fn to_sql_string<'a>(&self, r#type: &Type, optional: bool, dialect: SQLDialect) -> String;
-    fn to_sql_string_array_arg<'a>(&self, r#type: &Type, optional: bool, dialect: SQLDialect) -> String;
+    fn to_sql_string<'a>(&self, r#type: &DatabaseType, optional: bool, dialect: SQLDialect) -> String;
+    fn to_sql_string_array_arg<'a>(&self, r#type: &DatabaseType, optional: bool, dialect: SQLDialect) -> String;
 }
 
 impl ValueToSQLString for Value {
-    fn to_sql_string<'a>(&self, r#type: &Type, optional: bool, dialect: SQLDialect) -> String {
+    fn to_sql_string<'a>(&self, r#type: &DatabaseType, optional: bool, dialect: SQLDialect) -> String {
         if optional {
             if self.is_null() {
                 return "NULL".to_owned()

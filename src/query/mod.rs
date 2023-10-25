@@ -1,14 +1,15 @@
 use std::borrow::Cow;
 use std::collections::BTreeMap;
+use indexmap::indexmap;
 use itertools::Itertools;
-use maplit::{btreemap, hashmap};
+use maplit::{btreemap};
 use once_cell::sync::Lazy;
+use teo_runtime::database::r#type::DatabaseType;
 use crate::schema::dialect::SQLDialect;
 use crate::schema::value::encode::{IfIMode, SQLEscape, ToLike, ToSQLString, ToWrapped, ValueToSQLString, WrapInArray};
 use crate::stmts::select::r#where::{ToWrappedSQLString, WhereClause};
 use crate::stmts::select::r#where::WhereClause::{And, Not};
 use crate::stmts::SQL;
-use teo_parser::r#type::Type;
 use teo_runtime::model::{Model, object::Object, object::input::Input};
 use teo_runtime::model::field::column_named::ColumnNamed;
 use teo_runtime::namespace::Namespace;
@@ -32,7 +33,7 @@ impl Query {
 
     fn where_entry_array(
         column_name: &str,
-        r#type: &Type,
+        r#type: &DatabaseType,
         optional: bool,
         value: &Value,
         op: &str,
@@ -48,7 +49,7 @@ impl Query {
 
     fn where_entry_item(
         column_name: &str,
-        r#type: &Type,
+        r#type: &DatabaseType,
         optional: bool,
         value: &Value,
         dialect: SQLDialect,
@@ -121,13 +122,13 @@ impl Query {
                         result.push(Self::where_item(&format!("ARRAY_LENGTH({})", &column_name), "=", "0"));
                     }
                     "length" => {
-                        result.push(Self::where_item(&format!("ARRAY_LENGTH({})", &column_name), "=", &value.to_sql_string(&Type::I64, false, dialect)));
+                        result.push(Self::where_item(&format!("ARRAY_LENGTH({})", &column_name), "=", &value.to_sql_string(&dialect.int64_type(), false, dialect)));
                     }
                     "_count" => {
-                        result.push(Self::where_entry_item(&format!("COUNT({})", &column_name), &Type::I64, false, value, dialect));
+                        result.push(Self::where_entry_item(&format!("COUNT({})", &column_name), &dialect.int64_type(), false, value, dialect));
                     }
                     "_avg" | "_sum" => {
-                        result.push(Self::where_entry_item(&format!("{}({})", key[1..].to_uppercase(), &column_name), &Type::F64, true, value, dialect));
+                        result.push(Self::where_entry_item(&format!("{}({})", key[1..].to_uppercase(), &column_name), &dialect.float64_type(), true, value, dialect));
                     }
                     "_min" | "_max" => {
                         result.push(Self::where_entry_item(&format!("{}({})", key[1..].to_uppercase(), &column_name), r#type, optional, value, dialect));
@@ -143,7 +144,7 @@ impl Query {
 
     fn where_entry(
         column_name: &str,
-        field_type: &Type,
+        field_type: &DatabaseType,
         optional: bool,
         value: &Value,
         dialect: SQLDialect,
@@ -167,15 +168,15 @@ impl Query {
         let mut retval: Vec<String> = vec![];
         for (key, value) in r#where.iter() {
             if key == "AND" {
-                let inner = WhereClause::And(value.as_vec().unwrap().iter().map(|w| Self::r#where(model, w, dialect, table_alias)).collect()).to_string(dialect);
+                let inner = WhereClause::And(value.as_vec().unwrap().iter().map(|w| Self::r#where(namespace, model, w, dialect, table_alias)).collect()).to_string(dialect);
                 let val = "(".to_owned() + &inner + ")";
                 retval.push(val);
             } else if key == "OR" {
-                let inner = WhereClause::Or(value.as_vec().unwrap().iter().map(|w| Self::r#where(model, w, dialect, table_alias)).collect()).to_string(dialect);
+                let inner = WhereClause::Or(value.as_vec().unwrap().iter().map(|w| Self::r#where(namespace, model, w, dialect, table_alias)).collect()).to_string(dialect);
                 let val = "(".to_owned() + &inner + ")";
                 retval.push(val);
             } else if key == "NOT" {
-                let inner = WhereClause::Not(Self::r#where(model, value, dialect, table_alias)).to_string(dialect);
+                let inner = WhereClause::Not(Self::r#where(namespace, model, value, dialect, table_alias)).to_string(dialect);
                 let val = "(".to_owned() + &inner + ")";
                 retval.push(val);
             } else {
@@ -244,7 +245,7 @@ impl Query {
                                 format!("t.{} IS NOT NULL", f.escape(dialect))
                             }).collect::<Vec<String>>().join(" AND ")
                         };
-                        let mut inner_where = Query::r#where(opposite_model, value, dialect, Some("j"));
+                        let mut inner_where = Query::r#where(namespace, opposite_model, value, dialect, Some("j"));
                         if key.as_str() == "every" {
                             inner_where = Not(inner_where.to_wrapped()).to_string(dialect).to_wrapped();
                         }
@@ -300,6 +301,7 @@ impl Query {
     }
 
     pub(crate) fn build_for_count(
+        namespace: &Namespace,
         model: &Model,
         value: &Value,
         dialect: SQLDialect,
@@ -308,22 +310,23 @@ impl Query {
         join_table_results: Option<Vec<String>>,
         force_negative_take: bool,
     ) -> String {
-        format!("SELECT COUNT(*) FROM ({}) AS _", Self::build(model, value, dialect, additional_where, additional_left_join, join_table_results, force_negative_take))
+        format!("SELECT COUNT(*) FROM ({}) AS _", Self::build(namespace, model, value, dialect, additional_where, additional_left_join, join_table_results, force_negative_take))
     }
 
     pub(crate) fn build_for_group_by(
+        namespace: &Namespace,
         model: &Model,
         value: &Value,
         dialect: SQLDialect,
     ) -> String {
-        let aggregate = Self::build_for_aggregate(model, value, dialect);
+        let aggregate = Self::build_for_aggregate(namespace, model, value, dialect);
         let map = value.as_dictionary().unwrap();
         let by = map.get("by").unwrap().as_vec().unwrap().iter().map(|v| {
             let field_name = v.as_str().unwrap();
             model.field(field_name).unwrap().column_name()
         }).collect::<Vec<&str>>().join(",");
         let having = if let Some(having) = map.get("having") {
-            let inner = Query::r#where(model, having, dialect, None);
+            let inner = Query::r#where(namespace, model, having, dialect, None);
             " HAVING (".to_owned() + &inner + ")"
         } else {
             "".to_owned()
@@ -332,6 +335,7 @@ impl Query {
     }
 
     pub(crate) fn build_for_aggregate(
+        namespace: &Namespace,
         model: &Model,
         value: &Value,
         dialect: SQLDialect,
@@ -371,10 +375,11 @@ impl Query {
                 results.push(model.field(field_name).unwrap().column_name().to_string());
             }
         }
-        format!("SELECT {} FROM ({}) AS _", results.join(","), Self::build(model, value, dialect, None, None, None, false))
+        format!("SELECT {} FROM ({}) AS _", results.join(","), Self::build(namespace, model, value, dialect, None, None, None, false))
     }
 
     pub(crate) fn build(
+        namespace: &Namespace,
         model: &Model,
         value: &Value,
         dialect: SQLDialect,
@@ -424,7 +429,7 @@ impl Query {
                 }
             }).collect::<Vec<String>>();
             let column_refs: Vec<&str> = columns.iter().map(|k| k.as_str()).collect();
-            let sub_where = Query::r#where(model, cursor, dialect, None);
+            let sub_where = Query::r#where(namespace, model, cursor, dialect, None);
             let mut query = SQL::select(Some(&column_refs), &table_name);
             query.r#where(sub_where);
             Cow::Owned(format!("{}, ({}) AS c", &table_name, &query.to_string(dialect)))
@@ -434,7 +439,7 @@ impl Query {
         let mut stmt = SQL::select(if columns.is_empty() { None } else { Some(&column_refs) }, from.as_ref());
         if let Some(r#where) = r#where {
             if !r#where.as_dictionary().unwrap().is_empty() {
-                stmt.r#where(Query::r#where(model, r#where, dialect, None));
+                stmt.r#where(Query::r#where(namespace, model, r#where, dialect, None));
             }
         }
         if let Some(additional_where) = additional_where {
@@ -486,7 +491,7 @@ impl Query {
     fn default_desc_order(model: &Model) -> Value {
         let mut vec: Vec<Value> = vec![];
         for item in model.primary_index().items() {
-            vec.push(Value::Dictionary(hashmap!{item.field_name().to_string() => Value::String("desc".to_string())}));
+            vec.push(Value::Dictionary(indexmap!{item.field_name().to_string() => Value::String("desc".to_string())}));
         }
         Value::Array(vec)
     }
