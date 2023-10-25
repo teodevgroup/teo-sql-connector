@@ -1,3 +1,8 @@
+use teo_runtime::database::mysql::r#type::MySQLType;
+use teo_runtime::database::postgres::r#type::PostgreSQLType;
+use teo_runtime::database::r#type::DatabaseType;
+use teo_runtime::database::sqlite::r#type::SQLiteType;
+
 #[derive(Debug, PartialEq, Copy, Clone)]
 pub enum SQLDialect {
     MySQL,
@@ -26,6 +31,15 @@ impl SQLDialect {
         match self {
             SQLDialect::MySQL => true,
             _ => false,
+        }
+    }
+
+    pub(crate) fn float64_type(&self) -> DatabaseType {
+        match self {
+            SQLDialect::MySQL => DatabaseType::MySQLType(MySQLType::Double),
+            SQLDialect::PostgreSQL => DatabaseType::PostgreSQLType(PostgreSQLType::DoublePrecision),
+            SQLDialect::SQLite => DatabaseType::SQLiteType(SQLiteType::Real),
+            SQLDialect::MSSQL => panic!(),
         }
     }
 }

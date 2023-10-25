@@ -3,9 +3,11 @@ use array_tool::vec::Uniq;
 use std::collections::HashMap;
 use std::sync::Arc;
 use async_recursion::async_recursion;
-use quaint_forked::pooled::PooledConnection;
+use bigdecimal::num_traits::real::Real;
+use indexmap::IndexMap;
 use quaint_forked::prelude::{Queryable, ResultRow};
 use quaint_forked::ast::{Query as QuaintQuery};
+use quaint_forked::connector::OwnedTransaction;
 use crate::query::Query;
 use crate::schema::dialect::SQLDialect;
 use crate::schema::value::decode::RowDecoder;
@@ -13,9 +15,15 @@ use crate::schema::value::encode::{SQLEscape, ToSQLString, ToWrapped};
 use teo_runtime::action::Action;
 use teo_runtime::connection::connection::Connection;
 use teo_result::{Result, Error};
+use teo_runtime::connection::transaction;
+use teo_runtime::model::field::column_named::ColumnNamed;
+use teo_runtime::model::field::is_optional::IsOptional;
+use teo_runtime::model::field::named::Named;
 use teo_runtime::model::object::input::Input;
 use teo_runtime::model::Model;
 use teo_runtime::model::Object;
+use teo_runtime::namespace::Namespace;
+use teo_runtime::request;
 use teo_teon::value::Value;
 use teo_teon::teon;
 
@@ -23,7 +31,7 @@ pub(crate) struct Execution { }
 
 impl Execution {
 
-    pub(crate) fn row_to_value(model: &Model, row: &ResultRow, columns: &Vec<String>, dialect: SQLDialect) -> Value {
+    pub(crate) fn row_to_value(namespace: &Namespace, model: &Model, row: &ResultRow, columns: &Vec<String>, dialect: SQLDialect) -> Value {
         Value::Dictionary(columns.iter().filter_map(|column_name| {
             if let Some(field) = model.field_with_column_name(column_name) {
                 if field.auto_increment && dialect == SQLDialect::PostgreSQL {
@@ -32,7 +40,7 @@ impl Execution {
                     Some((field.name().to_owned(), RowDecoder::decode(field.field_type(), field.is_optional(), row, column_name, dialect)))
                 }
             } else if let Some(property) = model.property(column_name) {
-                Some((property.name().to_owned(), RowDecoder::decode(property.field_type(), property.is_optional(), row, column_name, dialect)))
+                Some((property.column_name().to_owned(), RowDecoder::decode(property.field_type(), property.is_optional(), row, column_name, dialect)))
             } else if column_name.contains(".") {
                 let names: Vec<&str> = column_name.split(".").collect();
                 let relation_name = names[0];
@@ -40,8 +48,7 @@ impl Execution {
                 if relation_name == "c" { // cursor fetch, should remove
                     None
                 } else {
-                    let graph = AppCtx::get().unwrap().graph();
-                    let opposite_model = AppCtx::get().unwrap().model(vec![relation_name]).unwrap().unwrap();
+                    let opposite_model = namespace.model_at_path(&vec![relation_name]).unwrap();
                     let field = opposite_model.field(field_name).unwrap();
                     Some((column_name.to_owned(), RowDecoder::decode(field.field_type(), field.is_optional(), row, column_name, dialect)))
                 }
@@ -52,7 +59,7 @@ impl Execution {
     }
 
     fn row_to_aggregate_value(model: &Model, row: &ResultRow, columns: &Vec<String>, dialect: SQLDialect) -> Value {
-        let mut retval: HashMap<String, Value> = HashMap::new();
+        let mut retval: IndexMap<String, Value> = IndexMap::new();
         for column in columns {
             let result_key = column.as_str();
             if result_key.contains(".") {
@@ -60,18 +67,18 @@ impl Execution {
                 let group = *splitted.get(0).unwrap();
                 let field_name = *splitted.get(1).unwrap();
                 if !retval.contains_key(group) {
-                    retval.insert(group.to_string(), Value::Dictionary(HashMap::new()));
+                    retval.insert(group.to_string(), Value::Dictionary(IndexMap::new()));
                 }
                 if group == "_count" { // force i64
                     let count: i64 = row.get(result_key).unwrap().as_i64().unwrap();
-                    retval.get_mut(group).unwrap().as_hashmap_mut().unwrap().insert(field_name.to_string(), teon!(count));
+                    retval.get_mut(group).unwrap().as_dictionary_mut().unwrap().insert(field_name.to_string(), teon!(count));
                 } else if group == "_avg" || group == "_sum" { // force f64
-                    let v = RowDecoder::decode(&FieldType::F64, true, &row, result_key, dialect);
-                    retval.get_mut(group).unwrap().as_hashmap_mut().unwrap().insert(field_name.to_string(), v);
+                    let v = RowDecoder::decode(&dialect.float64_type(), true, &row, result_key, dialect);
+                    retval.get_mut(group).unwrap().as_dictionary_mut().unwrap().insert(field_name.to_string(), v);
                 } else { // field type
                     let field = model.field(field_name).unwrap();
                     let v = RowDecoder::decode(field.field_type(), true, &row, result_key, dialect);
-                    retval.get_mut(group).unwrap().as_hashmap_mut().unwrap().insert(field_name.to_string(), v);
+                    retval.get_mut(group).unwrap().as_dictionary_mut().unwrap().insert(field_name.to_string(), v);
                 }
             } else if let Some(field) = model.field_with_column_name(result_key) {
                 retval.insert(field.name().to_owned(), RowDecoder::decode(field.field_type(), field.is_optional(), row, result_key, dialect));
@@ -82,13 +89,13 @@ impl Execution {
         Value::Dictionary(retval)
     }
 
-    pub(crate) async fn query_objects<'a>(conn: &'a PooledConnection, model: &'static Model, finder: &'a Value, dialect: SQLDialect, action: Action, action_source: Initiator, connection: Arc<dyn Connection>) -> Result<Vec<Object>> {
+    pub(crate) async fn query_objects<'a, Q>(conn: &'a Q, model: &'static Model, finder: &'a Value, dialect: SQLDialect, action: Action, transaction_ctx: transaction::Ctx, req_ctx: Option<request::Ctx>) -> Result<Vec<Object>> where Q: Queryable {
         let values = Self::query(conn, model, finder, dialect).await?;
-        let select = finder.as_hashmap().unwrap().get("select");
-        let include = finder.as_hashmap().unwrap().get("include");
+        let select = finder.as_dictionary().unwrap().get("select");
+        let include = finder.as_dictionary().unwrap().get("include");
         let mut results = vec![];
         for value in values {
-            let object = AppCtx::get().unwrap().graph().new_object(model, action, action_source.clone(), connection.clone())?;
+            let object = transaction_ctx.new_object(model, action, req_ctx.clone())?;
             object.set_from_database_result_value(&value, select, include);
             results.push(object);
         }
@@ -96,7 +103,7 @@ impl Execution {
     }
 
     #[async_recursion]
-    async fn query_internal(conn: &PooledConnection, model: &Model, value: &Value, dialect: SQLDialect, additional_where: Option<String>, additional_left_join: Option<String>, join_table_results: Option<Vec<String>>, force_negative_take: bool, additional_distinct: Option<Vec<String>>) -> Result<Vec<Value>> {
+    async fn query_internal<Q>(namespace: &Namespace, conn: &Q, model: &Model, value: &Value, dialect: SQLDialect, additional_where: Option<String>, additional_left_join: Option<String>, join_table_results: Option<Vec<String>>, force_negative_take: bool, additional_distinct: Option<Vec<String>>) -> Result<Vec<Value>> where Q: Queryable {
         let _select = value.get("select");
         let include = value.get("include");
         let original_distinct = value.get("distinct").map(|v| if v.as_vec().unwrap().is_empty() { None } else { Some(v.as_vec().unwrap()) }).flatten();
@@ -143,15 +150,15 @@ impl Execution {
                 results.reverse();
             }
         }
-        if let Some(include) = include.map(|i| i.as_hashmap().unwrap()) {
+        if let Some(include) = include.map(|i| i.as_dictionary().unwrap()) {
             for (key, value) in include {
-                let skip = value.as_hashmap().map(|m| m.get("skip")).flatten().map(|v| v.as_i64().unwrap());
-                let take = value.as_hashmap().map(|m| m.get("take")).flatten().map(|v| v.as_i64().unwrap());
+                let skip = value.as_dictionary().map(|m| m.get("skip")).flatten().map(|v| v.as_i64().unwrap());
+                let take = value.as_dictionary().map(|m| m.get("take")).flatten().map(|v| v.as_i64().unwrap());
                 let take_abs = take.map(|t| t.abs() as u64);
                 let negative_take = take.map(|v| v.is_negative()).unwrap_or(false);
-                let inner_distinct = value.as_hashmap().map(|m| m.get("distinct")).flatten().map(|v| if v.as_vec().unwrap().is_empty() { None } else { Some(v.as_vec().unwrap()) }).flatten();
+                let inner_distinct = value.as_dictionary().map(|m| m.get("distinct")).flatten().map(|v| if v.as_vec().unwrap().is_empty() { None } else { Some(v.as_vec().unwrap()) }).flatten();
                 let relation = model.relation(key).unwrap();
-                let (opposite_model, _) = AppCtx::get().unwrap().graph().opposite_relation(relation);
+                let (opposite_model, _) = namespace.opposite_relation(relation);
                 if !relation.has_join_table() {
                     let fields = relation.fields();
                     let opposite_fields = relation.references();
@@ -164,12 +171,12 @@ impl Execution {
                         // in a (?,?,?,?,?) format
                         let field_name = fields.get(0).unwrap();
                         results.iter().map(|v| {
-                            ToSQLString::to_string(&v.as_hashmap().unwrap().get(field_name).unwrap(), dialect)
+                            ToSQLString::to_string(&v.as_dictionary().unwrap().get(field_name).unwrap(), dialect)
                         }).collect::<Vec<String>>().join(",").to_wrapped()
                     } else {
                         // in a (VALUES (?,?),(?,?)) format
                         format!("(VALUES {})", results.iter().map(|o| {
-                            fields.iter().map(|f| ToSQLString::to_string(&o.as_hashmap().unwrap().get(f).unwrap(), dialect)).collect::<Vec<String>>().join(",").to_wrapped()
+                            fields.iter().map(|f| ToSQLString::to_string(&o.as_dictionary().unwrap().get(f).unwrap(), dialect)).collect::<Vec<String>>().join(",").to_wrapped()
                         }).collect::<Vec<String>>().join(","))
                     };
                     let where_addition = Query::where_item(&names, "IN", &values);
@@ -178,13 +185,13 @@ impl Execution {
                     } else {
                         Cow::Owned(teon!({}))
                     };
-                    let included_values = Self::query_internal(conn, opposite_model, &nested_query, dialect, Some(where_addition), None, None, negative_take, None).await?;
+                    let included_values = Self::query_internal(namespace, conn, opposite_model, &nested_query, dialect, Some(where_addition), None, None, negative_take, None).await?;
                     // println!("see included: {:?}", included_values);
                     for result in results.iter_mut() {
                         let mut skipped = 0;
                         let mut taken = 0;
                         if relation.is_vec() {
-                            result.as_hashmap_mut().unwrap().insert(relation.name().to_owned(), Value::Array(vec![]));
+                            result.as_dictionary_mut().unwrap().insert(relation.name().to_owned(), Value::Array(vec![]));
                         }
                         for included_value in included_values.iter() {
                             let mut matched = true;
@@ -201,12 +208,12 @@ impl Execution {
                             if matched {
                                 if (skip.is_none() || skip.unwrap() <= skipped) && (take.is_none() || taken < take_abs.unwrap()) {
                                     if result.get(relation.name()).is_none() {
-                                        result.as_hashmap_mut().unwrap().insert(relation.name().to_owned(), Value::Array(vec![]));
+                                        result.as_dictionary_mut().unwrap().insert(relation.name().to_owned(), Value::Array(vec![]));
                                     }
                                     if negative_take {
-                                        result.as_hashmap_mut().unwrap().get_mut(relation.name()).unwrap().as_vec_mut().unwrap().insert(0, included_value.clone());
+                                        result.as_dictionary_mut().unwrap().get_mut(relation.name()).unwrap().as_vec_mut().unwrap().insert(0, included_value.clone());
                                     } else {
-                                        result.as_hashmap_mut().unwrap().get_mut(relation.name()).unwrap().as_vec_mut().unwrap().push(included_value.clone());
+                                        result.as_dictionary_mut().unwrap().get_mut(relation.name()).unwrap().as_vec_mut().unwrap().push(included_value.clone());
                                     }
                                     taken += 1;
                                     if take.is_some() && (taken >= take_abs.unwrap()) {
@@ -219,9 +226,8 @@ impl Execution {
                         }
                     }
                 } else {
-                    let graph = AppCtx::get().unwrap().graph();
-                    let (opposite_model, opposite_relation) = graph.opposite_relation(relation);
-                    let (through_model, through_opposite_relation) = graph.through_opposite_relation(relation);
+                    let (opposite_model, opposite_relation) = namespace.opposite_relation(relation);
+                    let (through_model, through_opposite_relation) = namespace.through_opposite_relation(relation);
                     let mut join_parts: Vec<String> = vec![];
                     for (field, reference) in through_opposite_relation.iter() {
                         let field_column_name = through_model.field(field).unwrap().column_name();
@@ -230,7 +236,7 @@ impl Execution {
                     }
                     let joins = join_parts.join(" AND ");
                     let left_join = format!("{} AS j ON {}", through_model.table_name(), joins);
-                    let (through_table, through_relation) = graph.through_relation(relation);
+                    let (through_table, through_relation) = namespace.through_relation(relation);
                     let names = if through_relation.len() == 1 { // todo: column name
                         format!("j.{}", through_table.field(through_relation.fields().get(0).unwrap()).unwrap().column_name().escape(dialect))
                     } else {
@@ -239,11 +245,11 @@ impl Execution {
                     let values = if through_relation.len() == 1 { // (?,?,?,?,?) format
                         let field_name = through_relation.references().get(0).unwrap();
                         results.iter().map(|v| {
-                            ToSQLString::to_string(&v.as_hashmap().unwrap().get(field_name).unwrap(), dialect)
+                            ToSQLString::to_string(&v.as_dictionary().unwrap().get(field_name).unwrap(), dialect)
                         }).collect::<Vec<String>>().join(",").to_wrapped()
                     } else { // (VALUES (?,?),(?,?)) format
                         let pairs = results.iter().map(|o| {
-                            through_relation.references().iter().map(|f| ToSQLString::to_string(&o.as_hashmap().unwrap().get(f).unwrap(), dialect)).collect::<Vec<String>>().join(",").to_wrapped()
+                            through_relation.references().iter().map(|f| ToSQLString::to_string(&o.as_dictionary().unwrap().get(f).unwrap(), dialect)).collect::<Vec<String>>().join(",").to_wrapped()
                         }).collect::<Vec<String>>().join(",");
                         format!("(VALUES {})", pairs)
                     };
@@ -271,7 +277,7 @@ impl Execution {
                     let included_values = Self::query_internal(conn, opposite_model, &nested_query, dialect, Some(where_addition), Some(left_join), Some(join_table_results), negative_take, additional_inner_distinct).await?;
                     // println!("see included {:?}", included_values);
                     for result in results.iter_mut() {
-                        result.as_hashmap_mut().unwrap().insert(relation.name().to_owned(), Value::Array(vec![]));
+                        result.as_dictionary_mut().unwrap().insert(relation.name().to_owned(), Value::Array(vec![]));
                         let mut skipped = 0;
                         let mut taken = 0;
                         for included_value in included_values.iter() {
@@ -290,9 +296,9 @@ impl Execution {
                             if matched {
                                 if (skip.is_none() || skip.unwrap() <= skipped) && (take.is_none() || taken < take_abs.unwrap()) {
                                     if negative_take {
-                                        result.as_hashmap_mut().unwrap().get_mut(relation.name()).unwrap().as_vec_mut().unwrap().insert(0, included_value.clone());
+                                        result.as_dictionary_mut().unwrap().get_mut(relation.name()).unwrap().as_vec_mut().unwrap().insert(0, included_value.clone());
                                     } else {
-                                        result.as_hashmap_mut().unwrap().get_mut(relation.name()).unwrap().as_vec_mut().unwrap().push(included_value.clone());
+                                        result.as_dictionary_mut().unwrap().get_mut(relation.name()).unwrap().as_vec_mut().unwrap().push(included_value.clone());
                                     }
                                     taken += 1;
                                     if take.is_some() && (taken >= take_abs.unwrap()) {
@@ -310,11 +316,11 @@ impl Execution {
         Ok(results)
     }
 
-    pub(crate) async fn query(conn: &PooledConnection, model: &Model, finder: &Value, dialect: SQLDialect) -> Result<Vec<Value>> {
+    pub(crate) async fn query<Q>(conn: &Q, model: &Model, finder: &Value, dialect: SQLDialect) -> Result<Vec<Value>> where Q: Queryable {
        Self::query_internal(conn, model, finder, dialect, None, None, None, false, None).await
     }
 
-    pub(crate) async fn query_aggregate(conn: &PooledConnection, model: &Model, finder: &Value, dialect: SQLDialect) -> Result<Value> {
+    pub(crate) async fn query_aggregate<Q>(conn: &Q, model: &Model, finder: &Value, dialect: SQLDialect) -> Result<Value> where Q: Queryable {
         let stmt = Query::build_for_aggregate(model, finder, dialect);
         match conn.query(QuaintQuery::from(&*stmt)).await {
             Ok(result_set) => {
@@ -329,7 +335,7 @@ impl Execution {
         }
     }
 
-    pub(crate) async fn query_group_by(conn: &PooledConnection, model: &Model, finder: &Value, dialect: SQLDialect) -> Result<Value> {
+    pub(crate) async fn query_group_by<Q>(conn: &Q, model: &Model, finder: &Value, dialect: SQLDialect) -> Result<Value> where Q: Queryable {
         let stmt = Query::build_for_group_by(model, finder, dialect);
         let rows = match conn.query(QuaintQuery::from(stmt)).await {
             Ok(rows) => rows,
@@ -344,7 +350,7 @@ impl Execution {
         }).collect::<Vec<Value>>()))
     }
 
-    pub(crate) async fn query_count(conn: &PooledConnection, model: &Model, finder: &Value, dialect: SQLDialect) -> Result<u64> {
+    pub(crate) async fn query_count<Q>(conn: &Q, model: &Model, finder: &Value, dialect: SQLDialect) -> Result<u64> where Q: Queryable {
         let stmt = Query::build_for_count(model, finder, dialect, None, None, None, false);
         match conn.query(QuaintQuery::from(stmt)).await {
             Ok(result) => {
@@ -360,7 +366,7 @@ impl Execution {
     }
 
     fn without_paging_and_skip_take(value: &Value) -> Cow<Value> {
-        let map = value.as_hashmap().unwrap();
+        let map = value.as_dictionary().unwrap();
         if map.contains_key("take") || map.contains_key("skip") || map.contains_key("pageSize") || map.contains_key("pageNumber") {
             let mut map = map.clone();
             map.remove("take");
@@ -374,7 +380,7 @@ impl Execution {
     }
 
     fn without_paging_and_skip_take_distinct(value: &Value) -> Cow<Value> {
-        let map = value.as_hashmap().unwrap();
+        let map = value.as_dictionary().unwrap();
         if map.contains_key("take") || map.contains_key("skip") || map.contains_key("pageSize") || map.contains_key("pageNumber") {
             let mut map = map.clone();
             map.remove("take");
@@ -389,7 +395,7 @@ impl Execution {
     }
 
     fn sub_hashmap(value: &Value, keys: &Vec<&str>) -> HashMap<String, Value> {
-        let map = value.as_hashmap().unwrap();
+        let map = value.as_dictionary().unwrap();
         let mut retval = HashMap::new();
         for key in keys {
             retval.insert(key.to_string(), map.get(*key).cloned().unwrap_or(Value::Null));

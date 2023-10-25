@@ -21,6 +21,7 @@ use teo_runtime::model::Object;
 use teo_runtime::connection::connection::Connection;
 use teo_teon::{teon, Value};
 use teo_result::{Result, Error};
+use teo_runtime::connection::transaction;
 use teo_runtime::model::field::column_named::ColumnNamed;
 use teo_runtime::connection::transaction::Transaction;
 use teo_runtime::request::Ctx;
@@ -41,6 +42,14 @@ impl SQLTransaction {
 }
 
 impl SQLTransaction {
+
+    fn queryable<Q>(&self) -> &Q where Q: Queryable {
+        if let Some(tran) = &self.tran {
+            tran.as_ref()
+        } else {
+            self.conn()
+        }
+    }
 
     fn dialect(&self) -> SQLDialect {
         self.dialect
@@ -75,13 +84,13 @@ impl SQLTransaction {
         let stmt = SQL::insert_into(model.table_name()).values(value_refs).returning(auto_keys).to_string(self.dialect());
         // println!("create stmt: {}", stmt);
         if self.dialect() == SQLDialect::PostgreSQL {
-            match self.conn().query(QuaintQuery::from(stmt)).await {
+            match self.queryable().query(QuaintQuery::from(stmt)).await {
                 Ok(result_set) => {
                     let columns = result_set.columns().clone();
                     let result = result_set.into_iter().next();
                     if result.is_some() {
-                        let value = Execution::row_to_value(model, &result.unwrap(), &columns, self.dialect());
-                        for (k, v) in value.as_hashmap().unwrap() {
+                        let value = Execution::row_to_value(object.namespace(), model, &result.unwrap(), &columns, self.dialect());
+                        for (k, v) in value.as_dictionary().unwrap() {
                             object.set_value(k, v.clone())?;
                         }
                     }
@@ -122,7 +131,7 @@ impl SQLTransaction {
             if let Some(field) = model.field(key) {
                 let column_name = field.column_name();
                 if let Some(updator) = object.get_atomic_updator(key) {
-                    let (key, val) = Input::key_value(updator.as_hashmap().unwrap());
+                    let (key, val) = Input::key_value(updator.as_dictionary().unwrap());
                     match key {
                         "increment" => values.push((column_name, format!("{} + {}", column_name, ToSQLString::to_string(&val, self.dialect())))),
                         "decrement" => values.push((column_name, format!("{} - {}", column_name, ToSQLString::to_string(&val, self.dialect())))),
@@ -152,7 +161,7 @@ impl SQLTransaction {
                 return Err(Error::unknown_database_write_error());
             }
         }
-        let result = Execution::query(self.conn(), model, &teon!({"where": identifier, "take": 1}), self.dialect()).await?;
+        let result = Execution::query(self.queryable(), model, &teon!({"where": identifier, "take": 1}), self.dialect()).await?;
         if result.is_empty() {
             Err(Error::object_not_found())
         } else {
@@ -188,7 +197,7 @@ impl SQLTransaction {
 impl Transaction for SQLTransaction {
 
     async fn migrate(&self, models: Vec<&Model>, reset_database: bool) -> Result<()> {
-     SQLMigration::migrate(self.dialect(), self.conn(), models, self).await
+     SQLMigration::migrate(self.dialect(), self.queryable(), models, self).await
     }
 
     async fn purge(&self, models: Vec<&Model>) -> Result<()> {
@@ -200,7 +209,7 @@ impl Transaction for SQLTransaction {
     }
 
     async fn query_raw(&self, value: &Value) -> Result<Value> {
-        let result = self.conn().query(QuaintQuery::from(value.as_str().unwrap())).await;
+        let result = self.queryable().query(QuaintQuery::from(value.as_str().unwrap())).await;
         if result.is_err() {
             let err = result.unwrap_err();
             let msg = err.original_message();
@@ -231,7 +240,7 @@ impl Transaction for SQLTransaction {
         let r#where = Query::where_from_identifier(object, self.dialect());
         let stmt = SQL::delete_from(model.table_name()).r#where(r#where).to_string(self.dialect());
         // println!("see delete stmt: {}", stmt);
-        let result = self.conn().execute(QuaintQuery::from(stmt)).await;
+        let result = self.queryable().execute(QuaintQuery::from(stmt)).await;
         if result.is_err() {
             println!("{:?}", result.err().unwrap());
             return Err(Error::unknown_database_write_error());
@@ -240,8 +249,8 @@ impl Transaction for SQLTransaction {
         }
     }
 
-    async fn find_unique(&self, model: &Model, finder: &Value, ignore_select_and_include: bool, action: Action, req_ctx: Option<Ctx>) -> Result<Option<Object>> {
-        let objects = Execution::query_objects(self.conn(), model, finder, self.dialect(), action, action_source.clone(), Arc::new(self.clone())).await?;
+    async fn find_unique(&self, model: &Model, finder: &Value, ignore_select_and_include: bool, action: Action, transaction_ctx: transaction::Ctx, req_ctx: Option<Ctx>) -> Result<Option<Object>> {
+        let objects = Execution::query_objects(self.queryable(), model, finder, self.dialect(), action, transaction_ctx, req_ctx).await?;
         if objects.is_empty() {
             Ok(None)
         } else {
@@ -249,23 +258,23 @@ impl Transaction for SQLTransaction {
         }
     }
 
-    async fn find_many(&self, model: &Model, finder: &Value, ignore_select_and_include: bool, action: Action, req_ctx: Option<Ctx>) -> Result<Vec<Object>> {
-        Execution::query_objects(self.conn(), model, finder, self.dialect(), action, action_source, Arc::new(self.clone())).await
+    async fn find_many(&self, model: &Model, finder: &Value, ignore_select_and_include: bool, action: Action, transaction_ctx: transaction::Ctx, req_ctx: Option<Ctx>) -> Result<Vec<Object>> {
+        Execution::query_objects(self.queryable(), model, finder, self.dialect(), action, transaction_ctx, req_ctx).await
     }
 
     async fn count(&self, model: &Model, finder: &Value) -> Result<usize> {
-        match Execution::query_count(self.conn(), model, finder, self.dialect()).await {
+        match Execution::query_count(self.queryable(), model, finder, self.dialect()).await {
             Ok(c) => Ok(c as usize),
             Err(e) => Err(e),
         }
     }
 
     async fn aggregate(&self, model: &Model, finder: &Value) -> Result<Value> {
-        Execution::query_aggregate(self.conn(), model, finder, self.dialect()).await
+        Execution::query_aggregate(self.queryable(), model, finder, self.dialect()).await
     }
 
     async fn group_by(&self, model: &Model, finder: &Value) -> Result<Value> {
-        Execution::query_group_by(self.conn(), model, finder, self.dialect()).await
+        Execution::query_group_by(self.queryable(), model, finder, self.dialect()).await
     }
 
     async fn is_committed(&self) -> bool {

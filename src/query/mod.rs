@@ -10,6 +10,8 @@ use crate::stmts::select::r#where::WhereClause::{And, Not};
 use crate::stmts::SQL;
 use teo_parser::r#type::Type;
 use teo_runtime::model::{Model, object::Object, object::input::Input};
+use teo_runtime::model::field::column_named::ColumnNamed;
+use teo_runtime::namespace::Namespace;
 use teo_teon::Value;
 
 pub(crate) struct Query { }
@@ -52,7 +54,7 @@ impl Query {
         dialect: SQLDialect,
     ) -> String {
         let column_name = escape_wisdom(column_name, dialect);
-        if let Some(map) = value.as_hashmap() {
+        if let Some(map) = value.as_dictionary() {
             let mut result: Vec<String> = vec![];
             for (key, value) in map {
                 match key.as_str() {
@@ -151,7 +153,7 @@ impl Query {
 
     pub(crate) fn where_from_value(model: &Model, identifier: &Value, dialect: SQLDialect) -> String {
         let mut retval: Vec<String> = vec![];
-        for (key, value) in identifier.as_hashmap().unwrap() {
+        for (key, value) in identifier.as_dictionary().unwrap() {
             let field = model.field(key).unwrap();
             let column_name = field.column_name();
             let escape = dialect.escape();
@@ -160,8 +162,8 @@ impl Query {
         And(retval).to_string(dialect)
     }
 
-    pub(crate) fn r#where(model: &Model, r#where: &Value, dialect: SQLDialect, table_alias: Option<&str>) -> String {
-        let r#where = r#where.as_hashmap().unwrap();
+    pub(crate) fn r#where(namespace: &Namespace, model: &Model, r#where: &Value, dialect: SQLDialect, table_alias: Option<&str>) -> String {
+        let r#where = r#where.as_dictionary().unwrap();
         let mut retval: Vec<String> = vec![];
         for (key, value) in r#where.iter() {
             if key == "AND" {
@@ -194,31 +196,30 @@ impl Query {
                     let id_columns_string = id_columns.iter().map(|k| k.escape(dialect)).collect::<Vec<String>>().join(",").to_wrapped();
                     let id_columns_prefixed_string = id_columns.iter().map(|s| format!("t.{}", s)).collect::<Vec<String>>();
                     let id_columns_prefixed = id_columns_prefixed_string.iter().map(|s| s.as_str()).collect::<Vec<&str>>();
-                    let graph = AppCtx::get().unwrap().graph();
                     let _join_columns = if has_join_table {
-                        let (_m, r) = graph.through_relation(relation);
+                        let (_m, r) = namespace.through_relation(relation);
                         Some(r.references().iter().map(|k| model.field(k).unwrap().column_name()).collect::<Vec<&str>>())
                     } else { None };
                     let through_columns_string = if has_join_table {
-                        let (m, r) = graph.through_relation(relation);
+                        let (m, r) = namespace.through_relation(relation);
                         r.fields().iter().map(|k| format!("t.{}", m.field(k).unwrap().column_name())).collect::<Vec<String>>()
                     } else { vec![] };
                     let through_columns = if has_join_table {
                         through_columns_string.iter().map(|k| k.as_str()).collect::<Vec<&str>>()
                     } else { vec![] };
-                    for (key, value) in value.as_hashmap().unwrap() {
+                    for (key, value) in value.as_dictionary().unwrap() {
                         let from = if !has_join_table {
                             format!("{} AS t", model.table_name())
                         } else {
-                            let through_table_name = AppCtx::get().unwrap().model(relation.through_path().unwrap()).unwrap().unwrap().table_name();
+                            let through_table_name = namespace.model_at_path(&relation.through_path().unwrap()).unwrap().unwrap().table_name();
                             format!("{} AS t", through_table_name)
                         };
-                        let opposite_model = AppCtx::get().unwrap().model(relation.model_path()).unwrap().unwrap();
+                        let opposite_model = namespace.model_at_path(&relation.model_path()).unwrap().unwrap();
                         let relation_table_name = opposite_model.table_name();
                         let on = if has_join_table {
-                            let (_, opposite_relation) = graph.opposite_relation(relation);
+                            let (_, opposite_relation) = namespace.opposite_relation(relation);
                             let opposite_relation = opposite_relation.unwrap();
-                            let (join_model, join_relation) = graph.through_relation(opposite_relation);
+                            let (join_model, join_relation) = namespace.through_relation(opposite_relation);
                             join_relation.iter().map(|(f, r)| {
                                 let f = join_model.field(f).unwrap().column_name();
                                 let r = opposite_model.field(r).unwrap().column_name();
@@ -232,7 +233,7 @@ impl Query {
                             }).collect::<Vec<String>>().join(",")
                         };
                         let addition_where = if has_join_table {
-                            let (m, r) = graph.through_relation(relation);
+                            let (m, r) = namespace.through_relation(relation);
                             r.iter().map(|(f, _r)| {
                                 let f = m.field(f).unwrap().column_name();
                                 format!("t.{} IS NOT NULL", f.escape(dialect))
@@ -283,7 +284,7 @@ impl Query {
         let order_by = order_by.as_vec().unwrap();
         let mut retval: Vec<String> = vec![];
         for item in order_by.iter() {
-            let (key, value) = Input::key_value(item.as_hashmap().unwrap());
+            let (key, value) = Input::key_value(item.as_dictionary().unwrap());
             if let Some(field) = model.field(key) {
                 let column_name = field.column_name();
                 if let Some(str) = value.as_str() {
@@ -316,7 +317,7 @@ impl Query {
         dialect: SQLDialect,
     ) -> String {
         let aggregate = Self::build_for_aggregate(model, value, dialect);
-        let map = value.as_hashmap().unwrap();
+        let map = value.as_dictionary().unwrap();
         let by = map.get("by").unwrap().as_vec().unwrap().iter().map(|v| {
             let field_name = v.as_str().unwrap();
             model.field(field_name).unwrap().column_name()
@@ -335,13 +336,13 @@ impl Query {
         value: &Value,
         dialect: SQLDialect,
     ) -> String {
-        let map = value.as_hashmap().unwrap();
+        let map = value.as_dictionary().unwrap();
         let escape = dialect.escape();
         let mut results: Vec<String> = vec![];
         for (key, value) in map {
             match key.as_str() {
                 "_count" | "_sum" | "_avg" | "_min" | "_max" => {
-                    for (k, v) in value.as_hashmap().unwrap() {
+                    for (k, v) in value.as_dictionary().unwrap() {
                         let k = k.as_str();
                         if v.as_bool().unwrap() {
                             match k {
@@ -412,10 +413,10 @@ impl Query {
         }
         let column_refs = columns.iter().map(|c| c.as_str()).collect::<Vec<&str>>();
         let from = if let Some(cursor) = cursor {
-            let order_by = order_by.unwrap().as_vec().unwrap().get(0).unwrap().as_hashmap().unwrap();
+            let order_by = order_by.unwrap().as_vec().unwrap().get(0).unwrap().as_dictionary().unwrap();
             let key = order_by.keys().next().unwrap();
             let column_key = model.field(key).unwrap().column_name();
-            let columns = cursor.as_hashmap().unwrap().keys().map(|_k| {
+            let columns = cursor.as_dictionary().unwrap().keys().map(|_k| {
                 if dialect == SQLDialect::PostgreSQL {
                     format!("{} AS \"c.{}\"", column_key, column_key)
                 } else {
@@ -432,7 +433,7 @@ impl Query {
         };
         let mut stmt = SQL::select(if columns.is_empty() { None } else { Some(&column_refs) }, from.as_ref());
         if let Some(r#where) = r#where {
-            if !r#where.as_hashmap().unwrap().is_empty() {
+            if !r#where.as_dictionary().unwrap().is_empty() {
                 stmt.r#where(Query::r#where(model, r#where, dialect, None));
             }
         }
@@ -444,7 +445,7 @@ impl Query {
             }
         }
         if cursor.is_some() {
-            let order_by = order_by.unwrap().as_vec().unwrap().get(0).unwrap().as_hashmap().unwrap();
+            let order_by = order_by.unwrap().as_vec().unwrap().get(0).unwrap().as_dictionary().unwrap();
             let key = order_by.keys().next().unwrap();
             let order = if order_by.values().next().unwrap().as_str().unwrap() == if negative_take { "desc" } else { "asc" }
                 { ">=" } else { "<=" };

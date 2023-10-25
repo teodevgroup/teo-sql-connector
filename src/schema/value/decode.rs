@@ -1,9 +1,9 @@
 use crate::schema::dialect::SQLDialect;
-use teo_parser::r#type::Type;
 use teo_teon::value::Value;
 use chrono::{NaiveDate, DateTime, Utc};
 use indexmap::IndexMap;
 use quaint_forked::prelude::{ResultRow, ResultSet, Value as QuaintValue};
+use teo_runtime::database::r#type::DatabaseType;
 
 pub(crate) struct RowDecoder { }
 
@@ -77,7 +77,7 @@ impl RowDecoder {
                 let val = row.get(column).unwrap();
                 map.insert(column.to_owned(), Self::decode_raw(val));
             }
-            Value::IndexMap(map)
+            Value::Dictionary(map)
         }).collect();
         Value::Array(results)
     }
@@ -100,7 +100,7 @@ impl RowDecoder {
         }
     }
 
-    pub(crate) fn decode_value(r#type: &FieldType, optional: bool, value: Option<&quaint_forked::Value>, dialect: SQLDialect) -> Value {
+    pub(crate) fn decode_value(r#type: &DatabaseType, optional: bool, value: Option<&quaint_forked::Value>, dialect: SQLDialect) -> Value {
         if optional {
             if value.is_none() {
                 return Value::Null;
@@ -233,7 +233,7 @@ impl RowDecoder {
         panic!("Unhandled database when decoding type.")
     }
 
-    pub(crate) fn decode(r#type: &FieldType, optional: bool, row: &ResultRow, column_name: &str, dialect: SQLDialect) -> Value {
+    pub(crate) fn decode(r#type: &DatabaseType, optional: bool, row: &ResultRow, column_name: &str, dialect: SQLDialect) -> Value {
         let result = row.get(column_name);
         Self::decode_value(r#type, optional, result.clone(), dialect)
     }
