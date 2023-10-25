@@ -1,5 +1,5 @@
 use crate::schema::dialect::SQLDialect;
-use crate::core::field::r#type::{FieldType, FieldTypeOwner};
+use teo_parser::r#type::Type;
 use teo_teon::value::Value;
 use chrono::{NaiveDate, DateTime, Utc};
 use indexmap::IndexMap;
