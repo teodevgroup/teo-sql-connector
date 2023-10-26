@@ -51,22 +51,22 @@ fn to_mysql_string(t: &MySQLType) -> String {
         MySQLType::Int(len, signed) => {
             let len = if let Some(len) = len { format!("({})", len) } else { "".to_owned() };
             let suffix = if *signed { "" } else { " UNSIGNED" };
-            format!("INT({}){}", len, suffix)
+            format!("INT{}{}", len, suffix)
         }
         MySQLType::SmallInt(len, signed) => {
             let len = if let Some(len) = len { format!("({})", len) } else { "".to_owned() };
             let suffix = if *signed { "" } else { " UNSIGNED" };
-            format!("SMALLINT({}){}", len, suffix)
+            format!("SMALLINT{}{}", len, suffix)
         }
         MySQLType::MediumInt(len, signed) => {
             let len = if let Some(len) = len { format!("({})", len) } else { "".to_owned() };
             let suffix = if *signed { "" } else { " UNSIGNED" };
-            format!("MEDIUMINT({}){}", len, suffix)
+            format!("MEDIUMINT{}{}", len, suffix)
         }
         MySQLType::BigInt(len, signed) => {
             let len = if let Some(len) = len { format!("({})", len) } else { "".to_owned() };
             let suffix = if *signed { "" } else { " UNSIGNED" };
-            format!("BIGINT({}){}", len, suffix)
+            format!("BIGINT{}{}", len, suffix)
         }
         MySQLType::Year => panic!(),
         MySQLType::Float => "FLOAT".to_string(),
