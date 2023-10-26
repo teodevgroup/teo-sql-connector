@@ -23,6 +23,7 @@ use teo_runtime::model::object::input::Input;
 use teo_runtime::model::Model;
 use teo_runtime::model::Object;
 use teo_runtime::namespace::Namespace;
+use teo_runtime::object::error_ext;
 use teo_runtime::request;
 use teo_teon::value::Value;
 use teo_teon::teon;
@@ -89,7 +90,7 @@ impl Execution {
         Value::Dictionary(retval)
     }
 
-    pub(crate) async fn query_objects<'a>(namespace: &Namespace, conn: &'a dyn Queryable, model: &'static Model, finder: &'a Value, dialect: SQLDialect, action: Action, transaction_ctx: transaction::Ctx, req_ctx: Option<request::Ctx>) -> Result<Vec<Object>> {
+    pub(crate) async fn query_objects<'a>(namespace: &Namespace, conn: &'a dyn Queryable, model: &'static Model, finder: &'a Value, dialect: SQLDialect, action: Action, transaction_ctx: transaction::Ctx, req_ctx: Option<request::Ctx>) -> teo_runtime::path::Result<Vec<Object>> {
         let values = Self::query(namespace, conn, model, finder, dialect).await?;
         let select = finder.as_dictionary().unwrap().get("select");
         let include = finder.as_dictionary().unwrap().get("include");
@@ -103,7 +104,7 @@ impl Execution {
     }
 
     #[async_recursion]
-    async fn query_internal(namespace: &Namespace, conn: &dyn Queryable, model: &Model, value: &Value, dialect: SQLDialect, additional_where: Option<String>, additional_left_join: Option<String>, join_table_results: Option<Vec<String>>, force_negative_take: bool, additional_distinct: Option<Vec<String>>) -> Result<Vec<Value>> {
+    async fn query_internal(namespace: &Namespace, conn: &dyn Queryable, model: &Model, value: &Value, dialect: SQLDialect, additional_where: Option<String>, additional_left_join: Option<String>, join_table_results: Option<Vec<String>>, force_negative_take: bool, additional_distinct: Option<Vec<String>>) -> teo_runtime::path::Result<Vec<Value>> {
         let _select = value.get("select");
         let include = value.get("include");
         let original_distinct = value.get("distinct").map(|v| if v.as_array().unwrap().is_empty() { None } else { Some(v.as_array().unwrap()) }).flatten();
@@ -316,11 +317,11 @@ impl Execution {
         Ok(results)
     }
 
-    pub(crate) async fn query(namespace: &Namespace, conn: &dyn Queryable, model: &Model, finder: &Value, dialect: SQLDialect) -> Result<Vec<Value>> {
+    pub(crate) async fn query(namespace: &Namespace, conn: &dyn Queryable, model: &Model, finder: &Value, dialect: SQLDialect) -> teo_runtime::path::Result<Vec<Value>> {
        Self::query_internal(namespace, conn, model, finder, dialect, None, None, None, false, None).await
     }
 
-    pub(crate) async fn query_aggregate(namespace: &Namespace, conn: &dyn Queryable, model: &Model, finder: &Value, dialect: SQLDialect) -> Result<Value> {
+    pub(crate) async fn query_aggregate(namespace: &Namespace, conn: &dyn Queryable, model: &Model, finder: &Value, dialect: SQLDialect) -> teo_runtime::path::Result<Value> {
         let stmt = Query::build_for_aggregate(namespace, model, finder, dialect);
         match conn.query(QuaintQuery::from(&*stmt)).await {
             Ok(result_set) => {
@@ -335,13 +336,12 @@ impl Execution {
         }
     }
 
-    pub(crate) async fn query_group_by(namespace: &Namespace, conn: &dyn Queryable, model: &Model, finder: &Value, dialect: SQLDialect) -> Result<Value> {
+    pub(crate) async fn query_group_by(namespace: &Namespace, conn: &dyn Queryable, model: &Model, finder: &Value, dialect: SQLDialect) -> teo_runtime::path::Result<Value> {
         let stmt = Query::build_for_group_by(namespace, model, finder, dialect);
         let rows = match conn.query(QuaintQuery::from(stmt)).await {
             Ok(rows) => rows,
             Err(err) => {
-                println!("{:?}", err);
-                return Err(Error::unknown_database_find_error());
+                return Err(error_ext::unknown_database_find_error(path.clone(), format!("{:?}", err)));
             }
         };
         let columns = rows.columns().clone();
@@ -350,7 +350,7 @@ impl Execution {
         }).collect::<Vec<Value>>()))
     }
 
-    pub(crate) async fn query_count(namespace: &Namespace, conn: &dyn Queryable, model: &Model, finder: &Value, dialect: SQLDialect) -> Result<u64> {
+    pub(crate) async fn query_count(namespace: &Namespace, conn: &dyn Queryable, model: &Model, finder: &Value, dialect: SQLDialect) -> teo_runtime::path::Result<u64> {
         let stmt = Query::build_for_count(namespace, model, finder, dialect, None, None, None, false);
         match conn.query(QuaintQuery::from(stmt)).await {
             Ok(result) => {
@@ -359,8 +359,7 @@ impl Execution {
                 Ok(count as u64)
             },
             Err(err) => {
-                println!("{:?}", err);
-                return Err(Error::unknown_database_find_error());
+                return Err(error_ext::unknown_database_find_error(path.clone(), format!("{:?}", err)));
             }
         }
     }

@@ -26,7 +26,9 @@ use teo_runtime::connection::transaction;
 use teo_runtime::model::field::column_named::ColumnNamed;
 use teo_runtime::connection::transaction::Transaction;
 use teo_runtime::model::field::typed::Typed;
+use teo_runtime::object::error_ext;
 use teo_runtime::request::Ctx;
+use key_path::KeyPath;
 
 #[derive(Clone)]
 pub struct SQLTransaction {
@@ -72,7 +74,7 @@ impl SQLTransaction {
         self.tran.as_ref()
     }
 
-    async fn create_object(&self, object: &Object) -> Result<()> {
+    async fn create_object(&self, object: &Object, path: KeyPath) -> teo_runtime::path::Result<()> {
         let model = object.model();
         let keys = object.keys_for_save();
         let auto_keys = &model.cache.auto_keys;
@@ -125,14 +127,13 @@ impl SQLTransaction {
                     Ok(())
                 }
                 Err(err) => {
-                    println!("create object error: {:?}", err);
-                    Err(Self::handle_err_result(self,err))
+                    Err(self.handle_err_result(err, path))
                 }
             }
         }
     }
 
-    async fn update_object(&self, object: &Object) -> Result<()> {
+    async fn update_object(&self, object: &Object, path: KeyPath) -> teo_runtime::path::Result<()> {
         let model = object.model();
         let keys = object.keys_for_save();
         let mut values: Vec<(&str, String)> = vec![];
@@ -166,36 +167,35 @@ impl SQLTransaction {
             // println!("update stmt: {}", stmt);
             let result = self.conn().execute(QuaintQuery::from(stmt)).await;
             if result.is_err() {
-                println!("{:?}", result.err().unwrap());
-                return Err(Error::unknown_database_write_error());
+                return Err(error_ext::unknown_database_write_error(path, format!("{:?}", result.err().unwrap())));
             }
         }
         let result = Execution::query(object.namespace(), self.queryable(), model, &teon!({"where": identifier, "take": 1}), self.dialect()).await?;
         if result.is_empty() {
-            Err(Error::object_not_found())
+            Err(error_ext::not_found(path))
         } else {
             object.set_from_database_result_value(result.get(0).unwrap(), None, None);
             Ok(())
         }
     }
 
-    fn handle_err_result(&self, err: quaint_forked::error::Error) -> Error {
+    fn handle_err_result(&self, err: quaint_forked::error::Error, path: KeyPath) -> teo_runtime::path::Error {
         match err.kind() {
             UniqueConstraintViolation { constraint } => {
                 match constraint {
                     DatabaseConstraint::Fields(fields) => {
-                        Error::unique_value_duplicated(fields.get(0).unwrap().to_string())
+                        error_ext::unique_value_duplicated(path, fields.get(0).unwrap().to_string())
                     }
                     DatabaseConstraint::Index(index) => {
-                        Error::unique_value_duplicated(index.clone())
+                        error_ext::unique_value_duplicated(path, index.clone())
                     }
                     _ => {
-                        Error::unknown_database_write_error()
+                        error_ext::unknown_database_write_error(path, "")
                     }
                 }
             }
             _ => {
-                Error::unknown_database_write_error()
+                error_ext::unknown_database_write_error(path, "")
             }
         }
     }
@@ -233,17 +233,17 @@ impl Transaction for SQLTransaction {
         }
     }
 
-    async fn save_object(&self, object: &Object) -> Result<()> {
+    async fn save_object(&self, object: &Object, path: KeyPath) -> teo_runtime::path::Result<()> {
         if object.is_new() {
-            self.create_object(object).await
+            self.create_object(object, path).await
         } else {
-            self.update_object(object).await
+            self.update_object(object, path).await
         }
     }
 
-    async fn delete_object(&self, object: &Object) -> Result<()> {
+    async fn delete_object(&self, object: &Object, path: KeyPath) -> teo_runtime::path::Result<()> {
         if object.is_new() {
-            return Err(Error::object_is_not_saved_thus_cant_be_deleted());
+            return Err(Error::object_is_not_saved_thus_cant_be_deleted(path));
         }
         let model = object.model();
         let r#where = Query::where_from_identifier(object, self.dialect());
@@ -252,13 +252,13 @@ impl Transaction for SQLTransaction {
         let result = self.queryable().execute(QuaintQuery::from(stmt)).await;
         if result.is_err() {
             println!("{:?}", result.err().unwrap());
-            return Err(Error::unknown_database_write_error());
+            return Err(Error::unknown_database_write_error(path));
         } else {
             Ok(())
         }
     }
 
-    async fn find_unique(&self, model: &Model, finder: &Value, ignore_select_and_include: bool, action: Action, transaction_ctx: transaction::Ctx, req_ctx: Option<Ctx>) -> Result<Option<Object>> {
+    async fn find_unique(&self, model: &Model, finder: &Value, ignore_select_and_include: bool, action: Action, transaction_ctx: transaction::Ctx, req_ctx: Option<Ctx>) -> teo_runtime::path::Result<Option<Object>> {
         let objects = Execution::query_objects(transaction_ctx.namespace(), self.queryable(), model, finder, self.dialect(), action, transaction_ctx, req_ctx).await?;
         if objects.is_empty() {
             Ok(None)
@@ -267,22 +267,22 @@ impl Transaction for SQLTransaction {
         }
     }
 
-    async fn find_many(&self, model: &Model, finder: &Value, ignore_select_and_include: bool, action: Action, transaction_ctx: transaction::Ctx, req_ctx: Option<Ctx>) -> Result<Vec<Object>> {
+    async fn find_many(&self, model: &Model, finder: &Value, ignore_select_and_include: bool, action: Action, transaction_ctx: transaction::Ctx, req_ctx: Option<Ctx>, path: KeyPath) -> teo_runtime::path::Result<Vec<Object>> {
         Execution::query_objects(transaction_ctx.namespace(), self.queryable(), model, finder, self.dialect(), action, transaction_ctx, req_ctx).await
     }
 
-    async fn count(&self, model: &Model, finder: &Value, transaction_ctx: transaction::Ctx) -> Result<usize> {
+    async fn count(&self, model: &Model, finder: &Value, transaction_ctx: transaction::Ctx, path: KeyPath) -> teo_runtime::path::Result<usize> {
         match Execution::query_count(transaction_ctx.namespace(), self.queryable(), model, finder, self.dialect()).await {
             Ok(c) => Ok(c as usize),
             Err(e) => Err(e),
         }
     }
 
-    async fn aggregate(&self, model: &Model, finder: &Value, transaction_ctx: transaction::Ctx) -> Result<Value> {
+    async fn aggregate(&self, model: &Model, finder: &Value, transaction_ctx: transaction::Ctx, path: KeyPath) -> teo_runtime::path::Result<Value> {
         Execution::query_aggregate(transaction_ctx.namespace(), self.queryable(), model, finder, self.dialect()).await
     }
 
-    async fn group_by(&self, model: &Model, finder: &Value, transaction_ctx: transaction::Ctx) -> Result<Value> {
+    async fn group_by(&self, model: &Model, finder: &Value, transaction_ctx: transaction::Ctx, path: KeyPath) -> teo_runtime::path::Result<Value> {
         Execution::query_group_by(transaction_ctx.namespace(), self.queryable(), model, finder, self.dialect()).await
     }
 

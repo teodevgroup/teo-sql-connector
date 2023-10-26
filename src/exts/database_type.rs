@@ -42,10 +42,11 @@ fn to_mysql_string(t: &MySQLType) -> String {
         MySQLType::TinyText => "TINYTEXT".to_string(),
         MySQLType::MediumText => "MEDIUMTEXT".to_string(),
         MySQLType::LongText => "LONGTEXT".to_string(),
-        MySQLType::Bit(len) => format!("BIT({})", len),
+        MySQLType::Bit(len) => format!("BIT{}", if let Some(len) = len { format!("({len})") } else { "".to_owned() }),
         MySQLType::TinyInt(len, signed) => {
+            let len = if let Some(len) = len { format!("({len})") } else { "".to_owned() };
             let suffix = if *signed { "" } else { " UNSIGNED" };
-            format!("TINYINT({}){}", len, suffix)
+            format!("TINYINT{}{}", len, suffix)
         }
         MySQLType::Int(len, signed) => {
             let len = if let Some(len) = len { format!("({})", len) } else { "".to_owned() };
