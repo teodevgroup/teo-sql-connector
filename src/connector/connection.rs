@@ -1,3 +1,4 @@
+use std::fmt::{Debug, Formatter};
 use std::sync::{Arc};
 use tokio::sync::Mutex;
 use async_trait::async_trait;
@@ -12,11 +13,16 @@ use teo_runtime::connection::connection::Connection;
 use teo_result::{Error, Result};
 use teo_runtime::connection::transaction::Transaction;
 
-#[derive(Debug)]
 pub(crate) struct SQLConnection {
     dialect: SQLDialect,
     pool: Quaint,
     memory_mode: bool,
+}
+
+impl Debug for SQLConnection {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        todo!()
+    }
 }
 
 impl SQLConnection {
@@ -56,7 +62,7 @@ impl Connection for SQLConnection {
 
     async fn transaction(&self) -> Result<Arc<dyn Transaction>> {
         if self.memory_mode && self.dialect.is_sqlite() {
-            return self.sqlite_memory_transaction();
+            return self.sqlite_memory_transaction().await;
         }
         match self.pool.check_out().await {
             Ok(pooled_connection) => {
@@ -76,7 +82,7 @@ impl Connection for SQLConnection {
 
     async fn no_transaction(&self) -> Result<Arc<dyn Transaction>> {
         if self.memory_mode && self.dialect.is_sqlite() {
-            return self.sqlite_memory_transaction();
+            return self.sqlite_memory_transaction().await;
         }
         let pooled_connection = self.pool.check_out().await;
         if pooled_connection.is_err() {

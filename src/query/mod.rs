@@ -5,7 +5,6 @@ use itertools::Itertools;
 use maplit::{btreemap};
 use once_cell::sync::Lazy;
 use teo_parser::r#type::Type;
-use teo_runtime::database::r#type::DatabaseType;
 use crate::schema::dialect::SQLDialect;
 use crate::schema::value::encode::{IfIMode, SQLEscape, ToLike, ToSQLString, ToWrapped, ValueToSQLString, WrapInArray};
 use crate::stmts::select::r#where::{ToWrappedSQLString, WhereClause};
@@ -13,6 +12,7 @@ use crate::stmts::select::r#where::WhereClause::{And, Not};
 use crate::stmts::SQL;
 use teo_runtime::model::{Model, object::Object, object::input::Input};
 use teo_runtime::model::field::column_named::ColumnNamed;
+use teo_runtime::model::field::typed::Typed;
 use teo_runtime::namespace::Namespace;
 use teo_teon::Value;
 
@@ -110,7 +110,7 @@ impl Query {
                     }
                     "mode" => { }
                     "has" => {
-                        let element_type = r#type.element_field().unwrap();
+                        let element_type = r#type.as_array().unwrap();
                         result.push(Self::where_item(&column_name, "@>", &value.to_sql_string_array_arg(element_type.r#type(), element_type.is_optional(), dialect).wrap_in_array()));
                     }
                     "hasEvery" => {
@@ -145,7 +145,7 @@ impl Query {
 
     fn where_entry(
         column_name: &str,
-        field_type: &DatabaseType,
+        field_type: &Type,
         optional: bool,
         value: &Value,
         dialect: SQLDialect,
@@ -183,7 +183,7 @@ impl Query {
             } else {
                 if let Some(field) = model.field(key) {
                     let column_name = field.column_name();
-                    let optional = field.optionality.is_optional();
+                    let optional = field.optionality.is_any_optional();
                     let entry_column_name = if let Some(alias) = table_alias {
                         let _a = format!("{}.{}", alias, column_name);
                         Cow::Owned(format!("{}.{}", alias, column_name))
@@ -194,7 +194,7 @@ impl Query {
                     retval.push(where_entry);
                 } else if let Some(relation) = model.relation(key) {
                     let has_join_table = relation.has_join_table();
-                    let id_columns: Vec<&str> = model.primary_index().keys().iter().map(|k| model.field(k).unwrap().column_name()).collect();
+                    let id_columns: Vec<&str> = model.primary_index().unwrap().keys().iter().map(|k| model.field(k).unwrap().column_name()).collect();
                     let id_columns_string = id_columns.iter().map(|k| k.escape(dialect)).collect::<Vec<String>>().join(",").to_wrapped();
                     let id_columns_prefixed_string = id_columns.iter().map(|s| format!("t.{}", s)).collect::<Vec<String>>();
                     let id_columns_prefixed = id_columns_prefixed_string.iter().map(|s| s.as_str()).collect::<Vec<&str>>();

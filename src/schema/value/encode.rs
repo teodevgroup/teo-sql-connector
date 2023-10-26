@@ -145,7 +145,7 @@ impl PSQLArrayToSQLString for Value {
     fn to_string_with_ft(&self, dialect: SQLDialect, field_type: &Type) -> String {
         match self {
             Value::Array(values) => if values.is_empty() {
-                format!("array[]::{}[]", field_type_to_psql(field_type.element_field().unwrap().r#type()))
+                format!("array[]::{}[]", field_type_to_psql(field_type.as_array().unwrap().r#type()))
             } else {
                 format!("array[{}]", values.iter().map(|v| {
                     ToSQLString::to_string(&v, dialect)
@@ -324,6 +324,16 @@ pub trait SQLEscape {
 }
 
 impl SQLEscape for &str {
+    fn escape(&self, dialect: SQLDialect) -> String {
+        match dialect {
+            SQLDialect::MySQL => format!("`{}`", self),
+            SQLDialect::PostgreSQL => format!("\"{}\"", self),
+            _ => format!("`{}`", self),
+        }
+    }
+}
+
+impl SQLEscape for String {
     fn escape(&self, dialect: SQLDialect) -> String {
         match dialect {
             SQLDialect::MySQL => format!("`{}`", self),

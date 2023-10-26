@@ -42,7 +42,7 @@ impl<'a> ColumnManipulation<'a> {
             ColumnManipulation::AddColumn(_, _) => -200,
             ColumnManipulation::CreateIndex(_) => -100,
             ColumnManipulation::DropIndex(_) => -100,
-            _ => self.get_field(model).map(|f| f.migration().map(|m| m.priority.unwrap_or(0))).unwrap_or(Some(0)).unwrap_or(0)
+            _ => self.get_field(model).map(|f| f.migration.map(|m| m.priority.unwrap_or(0))).unwrap_or(Some(0)).unwrap_or(0)
         }
     }
 
@@ -282,7 +282,7 @@ AND    i.indisprimary", table_name);
 
 impl From<&Field> for SQLColumn {
     fn from(field: &Field) -> Self {
-        SQLColumn::new(field.column_name().to_owned(), field.database_type().clone(), field.is_required(), field.auto_increment, None, field.index().is_some() && field.index().unwrap().r#type.is_primary())
+        SQLColumn::new(field.column_name().to_owned(), field.database_type.clone(), field.is_required(), field.auto_increment, None, field.index().is_some() && field.index().unwrap().r#type.is_primary())
     }
 }
 
@@ -294,7 +294,7 @@ impl From<&Arc<Field>> for SQLColumn {
 
 impl From<&Property> for SQLColumn {
     fn from(property: &Property) -> Self {
-        SQLColumn::new(property.name.to_string(), property.database_type().clone(), property.is_required(), false, None, false)
+        SQLColumn::new(property.name.to_string(), property.database_type.clone(), property.is_required(), false, None, false)
     }
 }
 

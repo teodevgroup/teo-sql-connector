@@ -23,6 +23,7 @@ use teo_runtime::index::Type;
 use teo_teon::value::Value;
 use teo_result::{Result};
 use crate::exts::index::IndexExt;
+use crate::exts::sort::SortExt;
 
 pub(crate) struct SQLMigration { }
 
@@ -267,7 +268,7 @@ impl SQLMigration {
         let stmt = SQLCreateTableStatement::from(model).to_string(dialect);
         conn.execute(Query::from(stmt)).await.unwrap();
         // create indices
-        for index in model.indices() {
+        for index in model.indexes() {
             // primary is created when creating table
             if index.r#type().is_primary() { continue }
             let stmt = index.to_sql_create(dialect, &model.table_name);
@@ -294,9 +295,9 @@ impl SQLMigration {
         result
     }
 
-    fn normalized_model_indices(indices: &Vec<Index>, dialect: SQLDialect, table_name: &str) -> HashSet<Arc<Index>> {
+    fn normalized_model_indices(indices: Vec<&Index>, dialect: SQLDialect, table_name: &str) -> HashSet<Arc<Index>> {
         let mut results: Vec<Index> = indices.iter().map(|index| {
-            let mut index = index.as_ref().clone();
+            let mut index = index.clone();
             let sql_name_cow = index.sql_name(table_name, dialect);
             let sql_name = sql_name_cow.as_ref().to_owned();
             index.set_name(sql_name);
@@ -329,15 +330,15 @@ impl SQLMigration {
             let index_name = row.get("Key_name").unwrap().to_string().unwrap();
             let column_name = row.get("Column_name").unwrap().to_string().unwrap();
             let order = Sort::from_mysql_str(row.get("Collation").unwrap().as_str().unwrap()).unwrap();
-            if let Some(position) = indices.iter().position(|m: &Index| m.name().unwrap() == *index_name) {
+            if let Some(position) = indices.iter().position(|m: &Index| m.name() == &index_name) {
                 let model_index = indices.get_mut(position).unwrap();
                 let item = Item::new(column_name, order, None);
-                model_index.append_item(item);
+                model_index.items.push(item);
             } else {
                 let is_unique = !row.get("Non_unique").unwrap().as_bool().unwrap();
                 let item = Item::new(column_name, order, None);
                 indices.push(Index::new(
-                    if *index_name == "PRIMARY" { Type::Primary } else if is_unique { Type::Unique } else { Type::Index },
+                    if &index_name == "PRIMARY" { Type::Primary } else if is_unique { Type::Unique } else { Type::Index },
                     index_name.to_owned(),
                     vec![item],
                 ))
@@ -439,10 +440,10 @@ ORDER BY 1,6"#, table_name);
             let index_name = row.get("index_name").unwrap().to_string().unwrap();
             let column_name = row.get("column_name").unwrap().to_string().unwrap();
             let order = Sort::from_desc_bool(row.get("desc").unwrap().as_bool().unwrap());
-            if let Some(position) = indices.iter().position(|m: &Index| m.name().unwrap() == *index_name) {
+            if let Some(position) = indices.iter().position(|m: &Index| m.name() == &index_name) {
                 let model_index = indices.get_mut(position).unwrap();
                 let item = Item::new(column_name, order, None);
-                model_index.append_item(item);
+                model_index.items.push(item);
             } else {
                 let is_unique = row.get("is_unique").unwrap().as_bool().unwrap();
                 let is_primary = row.get("is_primary").unwrap().as_bool().unwrap();
