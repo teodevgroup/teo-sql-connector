@@ -183,7 +183,7 @@ impl Execution {
                     } else {
                         Cow::Owned(teon!({}))
                     };
-                    let included_values = Self::query_internal(namespace, conn, opposite_model, &nested_query, dialect, Some(where_addition), None, None, negative_take, None, path).await?;
+                    let included_values = Self::query_internal(namespace, conn, opposite_model, &nested_query, dialect, Some(where_addition), None, None, negative_take, None, path.clone()).await?;
                     // println!("see included: {:?}", included_values);
                     for result in results.iter_mut() {
                         let mut skipped = 0;
@@ -241,7 +241,8 @@ impl Execution {
                         through_relation.fields().iter().map(|f| format!("j.{}", through_table.field(f).unwrap().column_name().escape(dialect))).collect::<Vec<String>>().join(",").to_wrapped()
                     };
                     let values = if through_relation.len() == 1 { // (?,?,?,?,?) format
-                        let field_name = through_relation.references().get(0).unwrap();
+                        let references = through_relation.references();
+                        let field_name = references.get(0).unwrap();
                         results.iter().map(|v| {
                             ToSQLString::to_string(&v.as_dictionary().unwrap().get(*field_name).unwrap(), dialect)
                         }).collect::<Vec<String>>().join(",").to_wrapped()

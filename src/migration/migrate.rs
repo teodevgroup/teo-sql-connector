@@ -22,6 +22,7 @@ use teo_runtime::model::{Index, index::Item};
 use teo_runtime::index::Type;
 use teo_teon::value::Value;
 use teo_result::{Result};
+use crate::exts::database_type::DatabaseTypeToSQLString;
 use crate::exts::index::IndexExt;
 use crate::exts::sort::SortExt;
 
@@ -281,7 +282,7 @@ impl SQLMigration {
         let name = new_column.name();
         let escape = SQLDialect::PostgreSQL.escape();
         if old_column.r#type() != new_column.r#type() {
-            result.push(format!("ALTER TABLE {escape}{table}{escape} ALTER COLUMN {escape}{name}{escape} TYPE {}", new_column.r#type().to_string(SQLDialect::PostgreSQL)));
+            result.push(format!("ALTER TABLE {escape}{table}{escape} ALTER COLUMN {escape}{name}{escape} TYPE {}", new_column.r#type().to_sql_string()));
         }
         if old_column.default().is_none() && new_column.default().is_some() {
             result.push(format!("ALTER TABLE {escape}{table}{escape} ALTER COLUMN {escape}{name}{escape} SET DEFAULT {}", new_column.default().unwrap()));
@@ -295,12 +296,12 @@ impl SQLMigration {
         result
     }
 
-    fn normalized_model_indices(indices: Vec<&Index>, dialect: SQLDialect, table_name: &str) -> HashSet<Arc<Index>> {
+    fn normalized_model_indices(indices: Vec<&Index>, dialect: SQLDialect, table_name: &str) -> HashSet<Index> {
         let mut results: Vec<Index> = indices.iter().map(|index| {
-            let mut index = index.clone();
+            let mut index: Index = (*index).clone();
             let sql_name_cow = index.sql_name(table_name, dialect);
             let sql_name = sql_name_cow.as_ref().to_owned();
-            index.set_name(sql_name);
+            index.name = sql_name;
             index
         }).collect();
         if dialect == SQLDialect::PostgreSQL {

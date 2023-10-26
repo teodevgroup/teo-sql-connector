@@ -108,11 +108,11 @@ fn to_postgres_string(t: &PostgreSQLType) -> String {
         PostgreSQLType::Money => "MONEY".to_string(),
         PostgreSQLType::Date => "DATE".to_string(),
         PostgreSQLType::Timestamp(p, tz) => {
-            let tz = if tz { " WITH TIMEZONE" } else { "" };
+            let tz = if *tz { " WITH TIMEZONE" } else { "" };
             format!("TIMESTAMP({}){}", p, tz)
         }
         PostgreSQLType::Time(tz) => {
-            let tz = if tz { " WITH TIMEZONE" } else { "" };
+            let tz = if *tz { " WITH TIMEZONE" } else { "" };
             format!("TIME{}", tz)
         }
         PostgreSQLType::Json => "JSON".to_string(),

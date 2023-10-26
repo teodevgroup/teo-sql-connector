@@ -2,8 +2,8 @@ use bigdecimal::BigDecimal;
 use chrono::{NaiveDate, Utc, DateTime, SecondsFormat};
 use itertools::Itertools;
 use teo_parser::r#type::Type;
+use teo_teon::types::enum_variant::EnumVariant;
 use crate::schema::dialect::SQLDialect;
-use teo_runtime::database::r#type::DatabaseType;
 use teo_teon::Value;
 
 pub trait ToSQLString {
@@ -49,7 +49,7 @@ impl ValueToSQLString for Value {
                 let val = self.as_array().unwrap();
                 let mut result: Vec<String> = vec![];
                 for (_i, v) in val.iter().enumerate() {
-                    result.push(v.to_sql_string(element_field.r#type(), element_field.is_optional(), dialect));
+                    result.push(v.to_sql_string(element_field.unwrap_optional(), element_field.is_optional(), dialect));
                 }
                 result.join(", ").wrap_in_array()
             }
@@ -82,7 +82,7 @@ impl ValueToSQLString for Value {
                 let val = self.as_array().unwrap();
                 let mut result: Vec<String> = vec![];
                 for (_i, v) in val.iter().enumerate() {
-                    result.push(v.to_sql_string_array_arg(element_field.r#type(), element_field.is_optional(), dialect));
+                    result.push(v.to_sql_string_array_arg(element_field.unwrap_optional(), element_field.is_optional(), dialect));
                 }
                 result.join(",").wrap_in_array()
             }
@@ -145,7 +145,7 @@ impl PSQLArrayToSQLString for Value {
     fn to_string_with_ft(&self, dialect: SQLDialect, field_type: &Type) -> String {
         match self {
             Value::Array(values) => if values.is_empty() {
-                format!("array[]::{}[]", field_type_to_psql(field_type.as_array().unwrap().r#type()))
+                format!("array[]::{}[]", field_type_to_psql(field_type.as_array().unwrap().unwrap_optional()))
             } else {
                 format!("array[{}]", values.iter().map(|v| {
                     ToSQLString::to_string(&v, dialect)
@@ -339,6 +339,17 @@ impl SQLEscape for String {
             SQLDialect::MySQL => format!("`{}`", self),
             SQLDialect::PostgreSQL => format!("\"{}\"", self),
             _ => format!("`{}`", self),
+        }
+    }
+}
+
+impl ToSQLInputDialect for EnumVariant {
+
+    fn to_sql_input(&self, dialect: SQLDialect) -> String {
+        if self.value.is_string() {
+            self.value.as_str().unwrap().to_sql_input(dialect)
+        } else {
+            unreachable!()
         }
     }
 }

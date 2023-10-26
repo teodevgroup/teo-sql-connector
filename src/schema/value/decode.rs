@@ -139,9 +139,21 @@ impl RowDecoder {
         }
         if r#type.is_float32() || r#type.is_float() {
             if let Some(f64_val) = value.as_f64() {
-                return Value::number_from_f64(f64_val, r#type);
+                return if r#type.is_float() {
+                    Value::Float(f64_val)
+                } else if r#type.is_float32() {
+                    Value::Float32(f64_val as f32)
+                } else {
+                    unreachable!()
+                };
             } else if let Some(f32_val) = value.as_f32() {
-                return Value::number_from_f32(f32_val, r#type);
+                return if r#type.is_float() {
+                    Value::Float(f32_val as f64)
+                } else if r#type.is_float32() {
+                    Value::Float32(f32_val)
+                } else {
+                    unreachable!()
+                };
             } else {
                 return Value::Null;
             }
@@ -206,7 +218,7 @@ impl RowDecoder {
         if r#type.is_array() {
             if let Some(vals) = value.as_array() {
                 let inner = r#type.as_array().unwrap();
-                return Value::Array(vals.iter().map(|v| Self::decode_value(inner.r#type(), inner.is_optional(), Some(v), dialect)).collect());
+                return Value::Array(vals.iter().map(|v| Self::decode_value(inner.unwrap_optional(), inner.is_optional(), Some(v), dialect)).collect());
             } else {
                 return Value::Null;
             }

@@ -42,7 +42,7 @@ impl<'a> ColumnManipulation<'a> {
             ColumnManipulation::AddColumn(_, _) => -200,
             ColumnManipulation::CreateIndex(_) => -100,
             ColumnManipulation::DropIndex(_) => -100,
-            _ => self.get_field(model).map(|f| f.migration.map(|m| m.priority.unwrap_or(0))).unwrap_or(Some(0)).unwrap_or(0)
+            _ => self.get_field(model).map(|f| f.migration.as_ref().map(|m| m.priority.unwrap_or(0))).unwrap_or(Some(0)).unwrap_or(0)
         }
     }
 
@@ -58,7 +58,7 @@ pub(crate) struct ColumnDecoder { }
 
 impl ColumnDecoder {
 
-    pub(crate) fn manipulations<'a>(db_columns: &'a HashSet<SQLColumn>, model_columns: &'a HashSet<SQLColumn>, db_indices: &'a HashSet<Index>, model_indices: &'a HashSet<Arc<Index>>, model: &Model) -> Vec<ColumnManipulation<'a>> {
+    pub(crate) fn manipulations<'a>(db_columns: &'a HashSet<SQLColumn>, model_columns: &'a HashSet<SQLColumn>, db_indices: &'a HashSet<Index>, model_indices: &'a HashSet<Index>, model: &Model) -> Vec<ColumnManipulation<'a>> {
         let mut to_create: Vec<&Index> = vec![];
         let mut to_drop: Vec<&Index> = vec![];
         for index in db_indices {
@@ -109,13 +109,9 @@ impl ColumnDecoder {
         // collect
         let mut result = vec![];
         for c in to_add {
-            let action = if let Some(field) = model.field(c.name()) {
-                field.migration().map(|m| m.action.clone()).flatten()
-            } else { None };
             let default = if let Some(field) = model.field(c.name()) {
                 field.migration().map(|m| m.default.clone()).flatten()
             } else { None };
-
             result.push(ColumnManipulation::AddColumn(c, default));
         }
         for i in to_create {
@@ -125,15 +121,9 @@ impl ColumnDecoder {
             result.push(ColumnManipulation::DropIndex(i));
         }
         for c in to_remove {
-            let action = if let Some(field) = model.dropped_field(c.name()) {
-                field.migration().map(|m| m.action.clone()).flatten()
-            } else { None };
             result.push(ColumnManipulation::RemoveColumn(c.name().to_owned()));
         }
         for c in to_alter {
-            let action = if let Some(field) = model.field(c.name()) {
-                field.migration().map(|m| m.action.clone()).flatten()
-            } else { None };
             let old = db_columns.iter().find(|dbc| dbc.name() == c.name()).unwrap();
             result.push(ColumnManipulation::AlterColumn(old, c));
         }
@@ -176,7 +166,7 @@ impl ColumnDecoder {
         let columns_iter: Vec<ResultRow> = columns.into_iter().collect();
         let indices_iter: Vec<ResultRow> = indices.into_iter().collect();
         let primary_is_single = columns_iter.iter().filter(|r| {
-            r.get("pk").unwrap().as_int64().unwrap() > 0
+            r.get("pk").unwrap().as_i64().unwrap() > 0
         }).count() == 1;
         let mut result = hashset!{};
         for column in &columns_iter {

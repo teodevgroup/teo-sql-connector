@@ -1,6 +1,7 @@
 use std::borrow::Cow;
 use teo_runtime::index::Type;
 use teo_runtime::model::index::Item;
+use crate::exts::sort::SortExt;
 use crate::schema::dialect::SQLDialect;
 
 pub trait IndexExt {
@@ -38,11 +39,12 @@ impl IndexExt for teo_runtime::model::Index {
     }
 
     fn sql_name(&self, table_name: &str, dialect: SQLDialect) -> Cow<str> {
-        if self.name.is_some() {
-            Cow::Borrowed(self.name.as_ref().unwrap().as_str())
-        } else {
-            Cow::Owned(self.normalize_name(table_name, dialect))
-        }
+        Cow::Borrowed(self.name.as_str())
+        // if self.name.is_some() {
+        //     Cow::Borrowed(self.name.as_ref().unwrap().as_str())
+        // } else {
+        //     Cow::Owned(self.normalize_name(table_name, dialect))
+        // }
     }
 
     fn joined_names(&self) -> String {
@@ -108,9 +110,9 @@ impl IndexExt for teo_runtime::model::Index {
 
     fn sql_format_item(dialect: SQLDialect, item: &Item, table_create_mode: bool) -> String {
         let escape = dialect.escape();
-        let name = item.field_name();
-        let sort = item.sort().to_str();
-        let len = if let Some(len) = item.len() {
+        let name = &item.field;
+        let sort = item.sort.to_str();
+        let len = if let Some(len) = item.len {
             if dialect == SQLDialect::MySQL {
                 Cow::Owned(format!("({})", len))
             } else {

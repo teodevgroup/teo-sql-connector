@@ -256,7 +256,7 @@ impl Transaction for SQLTransaction {
         }
     }
 
-    async fn find_unique(&self, model: &Model, finder: &Value, ignore_select_and_include: bool, action: Action, transaction_ctx: transaction::Ctx, req_ctx: Option<Ctx>, path: KeyPath) -> teo_runtime::path::Result<Option<Object>> {
+    async fn find_unique(&self, model: &'static Model, finder: &Value, ignore_select_and_include: bool, action: Action, transaction_ctx: transaction::Ctx, req_ctx: Option<Ctx>, path: KeyPath) -> teo_runtime::path::Result<Option<Object>> {
         let objects = Execution::query_objects(transaction_ctx.namespace(), self.queryable(), model, finder, self.dialect(), action, transaction_ctx, req_ctx, path).await?;
         if objects.is_empty() {
             Ok(None)
@@ -265,22 +265,22 @@ impl Transaction for SQLTransaction {
         }
     }
 
-    async fn find_many(&self, model: &Model, finder: &Value, ignore_select_and_include: bool, action: Action, transaction_ctx: transaction::Ctx, req_ctx: Option<Ctx>, path: KeyPath) -> teo_runtime::path::Result<Vec<Object>> {
+    async fn find_many(&self, model: &'static Model, finder: &Value, ignore_select_and_include: bool, action: Action, transaction_ctx: transaction::Ctx, req_ctx: Option<Ctx>, path: KeyPath) -> teo_runtime::path::Result<Vec<Object>> {
         Execution::query_objects(transaction_ctx.namespace(), self.queryable(), model, finder, self.dialect(), action, transaction_ctx, req_ctx, path).await
     }
 
-    async fn count(&self, model: &Model, finder: &Value, transaction_ctx: transaction::Ctx, path: KeyPath) -> teo_runtime::path::Result<usize> {
+    async fn count(&self, model: &'static Model, finder: &Value, transaction_ctx: transaction::Ctx, path: KeyPath) -> teo_runtime::path::Result<usize> {
         match Execution::query_count(transaction_ctx.namespace(), self.queryable(), model, finder, self.dialect(), path).await {
             Ok(c) => Ok(c as usize),
             Err(e) => Err(e),
         }
     }
 
-    async fn aggregate(&self, model: &Model, finder: &Value, transaction_ctx: transaction::Ctx, path: KeyPath) -> teo_runtime::path::Result<Value> {
+    async fn aggregate(&self, model: &'static Model, finder: &Value, transaction_ctx: transaction::Ctx, path: KeyPath) -> teo_runtime::path::Result<Value> {
         Execution::query_aggregate(transaction_ctx.namespace(), self.queryable(), model, finder, self.dialect(), path).await
     }
 
-    async fn group_by(&self, model: &Model, finder: &Value, transaction_ctx: transaction::Ctx, path: KeyPath) -> teo_runtime::path::Result<Value> {
+    async fn group_by(&self, model: &'static Model, finder: &Value, transaction_ctx: transaction::Ctx, path: KeyPath) -> teo_runtime::path::Result<Value> {
         Execution::query_group_by(transaction_ctx.namespace(), self.queryable(), model, finder, self.dialect(), path).await
     }
 

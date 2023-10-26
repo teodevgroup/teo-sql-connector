@@ -111,7 +111,7 @@ impl Query {
                     "mode" => { }
                     "has" => {
                         let element_type = r#type.as_array().unwrap();
-                        result.push(Self::where_item(&column_name, "@>", &value.to_sql_string_array_arg(element_type.r#type(), element_type.is_optional(), dialect).wrap_in_array()));
+                        result.push(Self::where_item(&column_name, "@>", &value.to_sql_string_array_arg(element_type.unwrap_optional(), element_type.is_optional(), dialect).wrap_in_array()));
                     }
                     "hasEvery" => {
                         result.push(Self::where_item(&column_name, "@>", &value.to_sql_string_array_arg(r#type, false, dialect)));
@@ -123,13 +123,13 @@ impl Query {
                         result.push(Self::where_item(&format!("ARRAY_LENGTH({})", &column_name), "=", "0"));
                     }
                     "length" => {
-                        result.push(Self::where_item(&format!("ARRAY_LENGTH({})", &column_name), "=", &value.to_sql_string(&dialect.int64_type(), false, dialect)));
+                        result.push(Self::where_item(&format!("ARRAY_LENGTH({})", &column_name), "=", &value.to_sql_string(&Type::Int64, false, dialect)));
                     }
                     "_count" => {
-                        result.push(Self::where_entry_item(&format!("COUNT({})", &column_name), &dialect.int64_type(), false, value, dialect));
+                        result.push(Self::where_entry_item(&format!("COUNT({})", &column_name), &Type::Int64, false, value, dialect));
                     }
                     "_avg" | "_sum" => {
-                        result.push(Self::where_entry_item(&format!("{}({})", key[1..].to_uppercase(), &column_name), &dialect.float64_type(), true, value, dialect));
+                        result.push(Self::where_entry_item(&format!("{}({})", key[1..].to_uppercase(), &column_name), &Type::Float, true, value, dialect));
                     }
                     "_min" | "_max" => {
                         result.push(Self::where_entry_item(&format!("{}({})", key[1..].to_uppercase(), &column_name), r#type, optional, value, dialect));
@@ -404,13 +404,13 @@ impl Query {
             false
         };
         let table_name = if additional_left_join.is_some() {
-            &model.table_name.to_string() + " AS t"
+            (model.table_name.to_string() + " AS t")
         } else {
-            &model.table_name.to_string()
+            model.table_name.to_string()
         };
         let mut columns: Vec<String> = vec![];
         if additional_left_join.is_some() {
-            columns = model.save_keys().iter().map(|k| format!("t.{} AS {}", k.escape(dialect), k.escape(dialect))).collect::<Vec<String>>();
+            columns = model.cache.save_keys.iter().map(|k| format!("t.{} AS {}", k.escape(dialect), k.escape(dialect))).collect::<Vec<String>>();
         }
         if let Some(join_table_results) = join_table_results {
             for result_key in join_table_results {
@@ -433,9 +433,9 @@ impl Query {
             let sub_where = Query::r#where(namespace, model, cursor, dialect, None);
             let mut query = SQL::select(Some(&column_refs), &table_name);
             query.r#where(sub_where);
-            Cow::Owned(format!("{}, ({}) AS c", &table_name, &query.to_string(dialect)))
+            format!("{}, ({}) AS c", &table_name, &query.to_string(dialect))
         } else {
-            Cow::Borrowed(&table_name)
+            table_name.clone()
         };
         let mut stmt = SQL::select(if columns.is_empty() { None } else { Some(&column_refs) }, from.as_ref());
         if let Some(r#where) = r#where {
@@ -491,8 +491,8 @@ impl Query {
 
     fn default_desc_order(model: &Model) -> Value {
         let mut vec: Vec<Value> = vec![];
-        for item in model.primary_index().items() {
-            vec.push(Value::Dictionary(indexmap!{item.field_name().to_string() => Value::String("desc".to_string())}));
+        for item in &model.primary_index().unwrap().items {
+            vec.push(Value::Dictionary(indexmap!{item.field.clone() => Value::String("desc".to_string())}));
         }
         Value::Array(vec)
     }
