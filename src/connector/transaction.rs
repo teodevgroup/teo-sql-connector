@@ -204,7 +204,7 @@ impl SQLTransaction {
 #[async_trait]
 impl Transaction for SQLTransaction {
 
-    async fn migrate(&self, models: Vec<&Model>, reset_database: bool) -> Result<()> {
+    async fn migrate(&self, models: Vec<&Model>, dry_run: bool, reset_database: bool, silent: bool) -> Result<()> {
         SQLMigration::migrate(self.dialect(), self.queryable(), models, self).await
     }
 
