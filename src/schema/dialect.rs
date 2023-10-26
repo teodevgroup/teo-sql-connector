@@ -34,6 +34,13 @@ impl SQLDialect {
         }
     }
 
+    pub(crate) fn is_sqlite(&self) -> bool {
+        match self {
+            SQLDialect::SQLite => true,
+            _ => false,
+        }
+    }
+
     pub(crate) fn float64_type(&self) -> DatabaseType {
         match self {
             SQLDialect::MySQL => DatabaseType::MySQLType(MySQLType::Double),

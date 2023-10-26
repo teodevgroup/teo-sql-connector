@@ -21,8 +21,8 @@ impl TypeOrNull for &str {
 }
 
 pub(crate) trait ValueToSQLString {
-    fn to_sql_string<'a>(&self, r#type: &DatabaseType, optional: bool, dialect: SQLDialect) -> String;
-    fn to_sql_string_array_arg<'a>(&self, r#type: &DatabaseType, optional: bool, dialect: SQLDialect) -> String;
+    fn to_sql_string<'a>(&self, r#type: &Type, optional: bool, dialect: SQLDialect) -> String;
+    fn to_sql_string_array_arg<'a>(&self, r#type: &Type, optional: bool, dialect: SQLDialect) -> String;
 }
 
 impl ValueToSQLString for Value {

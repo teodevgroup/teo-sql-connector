@@ -108,8 +108,7 @@ impl SQLTransaction {
                     Ok(())
                 }
                 Err(err) => {
-                    println!("{:?}", err);
-                    Err(Self::handle_err_result(self, err))
+                    Err(self.handle_err_result(err, path))
                 }
             }
         } else {
@@ -167,12 +166,12 @@ impl SQLTransaction {
             // println!("update stmt: {}", stmt);
             let result = self.conn().execute(QuaintQuery::from(stmt)).await;
             if result.is_err() {
-                return Err(error_ext::unknown_database_write_error(path, format!("{:?}", result.err().unwrap())));
+                return Err(error_ext::unknown_database_write_error(path.clone(), format!("{:?}", result.err().unwrap())));
             }
         }
-        let result = Execution::query(object.namespace(), self.queryable(), model, &teon!({"where": identifier, "take": 1}), self.dialect()).await?;
+        let result = Execution::query(object.namespace(), self.queryable(), model, &teon!({"where": identifier, "take": 1}), self.dialect(), path.clone()).await?;
         if result.is_empty() {
-            Err(error_ext::not_found(path))
+            Err(error_ext::not_found(path.clone()))
         } else {
             object.set_from_database_result_value(result.get(0).unwrap(), None, None);
             Ok(())
@@ -190,12 +189,12 @@ impl SQLTransaction {
                         error_ext::unique_value_duplicated(path, index.clone())
                     }
                     _ => {
-                        error_ext::unknown_database_write_error(path, "")
+                        error_ext::unknown_database_write_error(path, format!("{}", err))
                     }
                 }
             }
             _ => {
-                error_ext::unknown_database_write_error(path, "")
+                error_ext::unknown_database_write_error(path, format!("{}", err))
             }
         }
     }
@@ -222,7 +221,7 @@ impl Transaction for SQLTransaction {
         if result.is_err() {
             let err = result.unwrap_err();
             let msg = err.original_message();
-            return Err(Error::internal_server_error(msg.unwrap()));
+            return Err(error_ext::invalid_sql_query(msg.unwrap()).into());
         } else {
             let result = result.unwrap();
             return if result.is_empty() {
@@ -243,7 +242,7 @@ impl Transaction for SQLTransaction {
 
     async fn delete_object(&self, object: &Object, path: KeyPath) -> teo_runtime::path::Result<()> {
         if object.is_new() {
-            return Err(Error::object_is_not_saved_thus_cant_be_deleted(path));
+            return Err(error_ext::object_is_not_saved_thus_cant_be_deleted(path));
         }
         let model = object.model();
         let r#where = Query::where_from_identifier(object, self.dialect());
@@ -251,15 +250,14 @@ impl Transaction for SQLTransaction {
         // println!("see delete stmt: {}", stmt);
         let result = self.queryable().execute(QuaintQuery::from(stmt)).await;
         if result.is_err() {
-            println!("{:?}", result.err().unwrap());
-            return Err(Error::unknown_database_write_error(path));
+            return Err(error_ext::unknown_database_write_error(path, format!("{:?}", result.err().unwrap())));
         } else {
             Ok(())
         }
     }
 
-    async fn find_unique(&self, model: &Model, finder: &Value, ignore_select_and_include: bool, action: Action, transaction_ctx: transaction::Ctx, req_ctx: Option<Ctx>) -> teo_runtime::path::Result<Option<Object>> {
-        let objects = Execution::query_objects(transaction_ctx.namespace(), self.queryable(), model, finder, self.dialect(), action, transaction_ctx, req_ctx).await?;
+    async fn find_unique(&self, model: &Model, finder: &Value, ignore_select_and_include: bool, action: Action, transaction_ctx: transaction::Ctx, req_ctx: Option<Ctx>, path: KeyPath) -> teo_runtime::path::Result<Option<Object>> {
+        let objects = Execution::query_objects(transaction_ctx.namespace(), self.queryable(), model, finder, self.dialect(), action, transaction_ctx, req_ctx, path).await?;
         if objects.is_empty() {
             Ok(None)
         } else {
@@ -268,22 +266,22 @@ impl Transaction for SQLTransaction {
     }
 
     async fn find_many(&self, model: &Model, finder: &Value, ignore_select_and_include: bool, action: Action, transaction_ctx: transaction::Ctx, req_ctx: Option<Ctx>, path: KeyPath) -> teo_runtime::path::Result<Vec<Object>> {
-        Execution::query_objects(transaction_ctx.namespace(), self.queryable(), model, finder, self.dialect(), action, transaction_ctx, req_ctx).await
+        Execution::query_objects(transaction_ctx.namespace(), self.queryable(), model, finder, self.dialect(), action, transaction_ctx, req_ctx, path).await
     }
 
     async fn count(&self, model: &Model, finder: &Value, transaction_ctx: transaction::Ctx, path: KeyPath) -> teo_runtime::path::Result<usize> {
-        match Execution::query_count(transaction_ctx.namespace(), self.queryable(), model, finder, self.dialect()).await {
+        match Execution::query_count(transaction_ctx.namespace(), self.queryable(), model, finder, self.dialect(), path).await {
             Ok(c) => Ok(c as usize),
             Err(e) => Err(e),
         }
     }
 
     async fn aggregate(&self, model: &Model, finder: &Value, transaction_ctx: transaction::Ctx, path: KeyPath) -> teo_runtime::path::Result<Value> {
-        Execution::query_aggregate(transaction_ctx.namespace(), self.queryable(), model, finder, self.dialect()).await
+        Execution::query_aggregate(transaction_ctx.namespace(), self.queryable(), model, finder, self.dialect(), path).await
     }
 
     async fn group_by(&self, model: &Model, finder: &Value, transaction_ctx: transaction::Ctx, path: KeyPath) -> teo_runtime::path::Result<Value> {
-        Execution::query_group_by(transaction_ctx.namespace(), self.queryable(), model, finder, self.dialect()).await
+        Execution::query_group_by(transaction_ctx.namespace(), self.queryable(), model, finder, self.dialect(), path).await
     }
 
     async fn is_committed(&self) -> bool {

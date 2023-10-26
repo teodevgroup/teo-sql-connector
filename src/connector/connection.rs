@@ -28,23 +28,26 @@ impl SQLConnection {
         Self { dialect, pool, memory_mode: url.to_string().contains(":memory:") }
     }
 
-    async fn connection(&self) -> Result<Arc<dyn Connection>> {
-        if self.memory_mode {
-            let mut connection = UNIQUE_CONNECTION.lock().await;
-            if connection.is_none() {
-                let result = self.normal_checkout_connection().await.unwrap();
-                *connection = Some(result.clone());
-                Ok(result)
-            } else {
-                Ok(connection.clone().unwrap())
-            }
+    async fn sqlite_memory_transaction(&self) -> Result<Arc<dyn Transaction>> {
+        let mut connection = UNIQUE_TRANSACTION.lock().await;
+        if connection.is_none() {
+            let result = {
+                let pooled_connection = self.pool.check_out().await;
+                if pooled_connection.is_err() {
+                    Err(Error::new(format!("cannot create pooled connection: {}", pooled_connection.err().unwrap().to_string())))
+                } else {
+                    Ok(Arc::new(SQLTransaction::new(self.dialect, Arc::new(pooled_connection.unwrap()), None)))
+                }
+            }?;
+            *connection = Some(result.clone());
+            Ok(result)
         } else {
-            self.normal_checkout_connection().await
+            Ok(connection.clone().unwrap())
         }
     }
 }
 
-static UNIQUE_CONNECTION: Lazy<Mutex<Option<Arc<dyn Connection>>>> = Lazy::new(|| {
+static UNIQUE_TRANSACTION: Lazy<Mutex<Option<Arc<dyn Transaction>>>> = Lazy::new(|| {
     Mutex::new(None)
 });
 
@@ -52,6 +55,9 @@ static UNIQUE_CONNECTION: Lazy<Mutex<Option<Arc<dyn Connection>>>> = Lazy::new(|
 impl Connection for SQLConnection {
 
     async fn transaction(&self) -> Result<Arc<dyn Transaction>> {
+        if self.memory_mode && self.dialect.is_sqlite() {
+            return self.sqlite_memory_transaction();
+        }
         match self.pool.check_out().await {
             Ok(pooled_connection) => {
                 let pooled_connection = Arc::new(pooled_connection);
@@ -69,6 +75,9 @@ impl Connection for SQLConnection {
     }
 
     async fn no_transaction(&self) -> Result<Arc<dyn Transaction>> {
+        if self.memory_mode && self.dialect.is_sqlite() {
+            return self.sqlite_memory_transaction();
+        }
         let pooled_connection = self.pool.check_out().await;
         if pooled_connection.is_err() {
             Err(Error::new(format!("cannot create pooled connection: {}", pooled_connection.err().unwrap().to_string())))

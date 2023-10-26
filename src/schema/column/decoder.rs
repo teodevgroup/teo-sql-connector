@@ -208,7 +208,7 @@ impl ColumnDecoder {
         result
     }
 
-    async fn psql_primary_field_name(conn: &PooledConnection, table_name: &str) -> Vec<String> {
+    async fn psql_primary_field_name(conn: &dyn Queryable, table_name: &str) -> Vec<String> {
         let sql = format!("SELECT a.attname
 FROM   pg_index i
 JOIN   pg_attribute a ON a.attrelid = i.indrelid
@@ -221,7 +221,7 @@ AND    i.indisprimary", table_name);
         }).collect()
     }
 
-    async fn psql_is_unique(conn: &PooledConnection, table_name: &str, column_name: &str) -> bool {
+    async fn psql_is_unique(conn: &dyn Queryable, table_name: &str, column_name: &str) -> bool {
         let sql = format!("SELECT *
             FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS tc
         inner join INFORMATION_SCHEMA.CONSTRAINT_COLUMN_USAGE cu
@@ -233,11 +233,11 @@ AND    i.indisprimary", table_name);
         !conn.query(Query::from(sql)).await.unwrap().is_empty()
     }
 
-    async fn psql_is_auto_increment(conn: &PooledConnection, table_name: &str, column_name: &str) -> bool {
+    async fn psql_is_auto_increment(conn: &dyn Queryable, table_name: &str, column_name: &str) -> bool {
         !conn.query(Query::from(psql_is_auto_increment(table_name, column_name))).await.unwrap().is_empty()
     }
 
-    pub(crate) async fn decode(row: ResultRow, dialect: SQLDialect, conn: &PooledConnection, table_name: &str) -> SQLColumn {
+    pub(crate) async fn decode(row: ResultRow, dialect: SQLDialect, conn: &dyn Queryable, table_name: &str) -> SQLColumn {
         if dialect == SQLDialect::MySQL {
             let field: String = row.get("Field").unwrap().to_string().unwrap();
             let field_type_in_string: String = row.get("Type").unwrap().to_string().unwrap();

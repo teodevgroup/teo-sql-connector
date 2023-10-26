@@ -4,6 +4,7 @@ use indexmap::indexmap;
 use itertools::Itertools;
 use maplit::{btreemap};
 use once_cell::sync::Lazy;
+use teo_parser::r#type::Type;
 use teo_runtime::database::r#type::DatabaseType;
 use crate::schema::dialect::SQLDialect;
 use crate::schema::value::encode::{IfIMode, SQLEscape, ToLike, ToSQLString, ToWrapped, ValueToSQLString, WrapInArray};
@@ -33,7 +34,7 @@ impl Query {
 
     fn where_entry_array(
         column_name: &str,
-        r#type: &DatabaseType,
+        r#type: &Type,
         optional: bool,
         value: &Value,
         op: &str,
@@ -49,7 +50,7 @@ impl Query {
 
     fn where_entry_item(
         column_name: &str,
-        r#type: &DatabaseType,
+        r#type: &Type,
         optional: bool,
         value: &Value,
         dialect: SQLDialect,

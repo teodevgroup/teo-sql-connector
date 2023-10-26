@@ -149,21 +149,22 @@ impl SQLMigration {
     }
 
     pub(crate) async fn migrate(dialect: SQLDialect, conn: &dyn Queryable, models: Vec<&Model>, pconn: &dyn Transaction) -> Result<()> {
-        let mut db_tables = Self::get_db_user_tables(dialect, &conn).await;
+        let mut db_tables = Self::get_db_user_tables(dialect, conn).await;
         // compare each table and do migration
         for model in models {
-            if model.is_virtual() { continue }
             let table_name = &model.table_name;
-            if let Some(migration) = model.migration() {
+            if let Some(migration) = Some(&model.migration) {
                 if !db_tables.iter().any(|x| x == table_name) {
-                    for old_name in &migration.renamed {
-                        if db_tables.contains(old_name) {
-                            // rename
-                            Self::rename_table(dialect, &conn, old_name.as_str(), table_name).await;
-                            let index = db_tables.clone().iter().find_position(|v| *v == old_name).unwrap().0;
-                            db_tables.remove(index);
-                            db_tables.push(table_name.to_string());
-                            break;
+                    if let Some(old_name) = &migration.renamed {
+                        for old_name in old_name {
+                            if db_tables.contains(old_name) {
+                                // rename
+                                Self::rename_table(dialect, conn, old_name.as_str(), table_name).await;
+                                let index = db_tables.clone().iter().find_position(|v| *v == old_name).unwrap().0;
+                                db_tables.remove(index);
+                                db_tables.push(table_name.to_string());
+                                break;
+                            }
                         }
                     }
                 }
@@ -172,28 +173,28 @@ impl SQLMigration {
             let is_table_exist = db_tables.iter().any(|x| x == table_name);
             if !is_table_exist {
                 // table not exist, create table
-                Self::create_table(dialect, &conn, model).await;
+                Self::create_table(dialect, conn, model).await;
             } else {
                 // remove from list
                 let index = db_tables.clone().iter().find_position(|x| *x == table_name).unwrap().0;
                 db_tables.remove(index);
                 // start migrate for this table
                 let model_columns = ColumnDecoder::decode_model_columns(model);
-                let db_columns = Self::db_columns(&conn, dialect, table_name).await;
+                let db_columns = Self::db_columns(conn, dialect, table_name).await;
                 let need_to_alter_any_column = ColumnDecoder::need_to_alter_any_columns(&db_columns, &model_columns);
                 if need_to_alter_any_column && dialect == SQLDialect::SQLite {
                     println!("see model_columns: {:?}", &model_columns);
                     println!("see db_columns: {:?}", &db_columns);
                     panic!("SQLite doesn't support column altering");
                 }
-                let table_has_records = Self::table_has_records(dialect, &conn, table_name).await;
-                let db_indices = Self::db_indices(dialect, &conn, model).await;
-                let model_indices = Self::normalized_model_indices(model.indices(), dialect, table_name);
+                let table_has_records = Self::table_has_records(dialect, conn, table_name).await;
+                let db_indices = Self::db_indices(dialect, conn, model).await;
+                let model_indices = Self::normalized_model_indices(model.indexes(), dialect, table_name);
                 // here update columns and indices
                 let manipulations = ColumnDecoder::manipulations(&db_columns, &model_columns, &db_indices, &model_indices, model);
                 if table_has_records && manipulations.iter().find(|m| m.is_add_column_non_null()).is_some() && model.allows_drop_when_migrate() {
-                    Self::drop_table(dialect, &conn, table_name).await;
-                    Self::create_table(dialect, &conn, model).await;
+                    Self::drop_table(dialect, conn, table_name).await;
+                    Self::create_table(dialect, conn, model).await;
                 } else {
                     for m in manipulations.iter() {
                         match m {
@@ -208,7 +209,7 @@ impl SQLMigration {
                             ColumnManipulation::AddColumn(column, default) => {
                                 if column.not_null() && default.is_none() {
                                     // if any records, just raise here
-                                    let has_records = Self::table_has_records(dialect, &conn, table_name).await;
+                                    let has_records = Self::table_has_records(dialect, conn, table_name).await;
                                     if has_records {
                                         panic!("Cannot add new non null column `{}', table `{}' has records. Consider add a default value or drop the table.", column.name(), table_name)
                                     }
@@ -250,7 +251,7 @@ impl SQLMigration {
         }
         // drop tables
         for table in db_tables {
-            Self::drop_table(dialect, &conn, &table).await;
+            Self::drop_table(dialect, conn, &table).await;
         }
         Ok(())
     }
@@ -293,18 +294,18 @@ impl SQLMigration {
         result
     }
 
-    fn normalized_model_indices(indices: &Vec<Arc<Index>>, dialect: SQLDialect, table_name: &str) -> HashSet<Arc<Index>> {
-        let mut results: Vec<Arc<Index>> = indices.iter().map(|index| {
+    fn normalized_model_indices(indices: &Vec<Index>, dialect: SQLDialect, table_name: &str) -> HashSet<Arc<Index>> {
+        let mut results: Vec<Index> = indices.iter().map(|index| {
             let mut index = index.as_ref().clone();
             let sql_name_cow = index.sql_name(table_name, dialect);
             let sql_name = sql_name_cow.as_ref().to_owned();
             index.set_name(sql_name);
-            Arc::new(index)
+            index
         }).collect();
         if dialect == SQLDialect::PostgreSQL {
             if let Some(primary) = results.iter().find(|r| r.r#type().is_primary()) {
                 let unique_for_primary = primary.psql_primary_to_unique(table_name);
-                results.push(Arc::new(unique_for_primary));
+                results.push(unique_for_primary);
             }
         }
         results.into_iter().collect()
@@ -387,10 +388,10 @@ GROUP BY   tnsp.nspname,
             let index_name = row.get("index_name").unwrap().to_string().unwrap();
             let column_name = row.get("column_name").unwrap().to_string().unwrap();
             let order = Sort::from_str(row.get("order").unwrap().as_str().unwrap()).unwrap();
-            if let Some(position) = indices.iter().position(|m: &Index| m.name().unwrap() == index_name) {
+            if let Some(position) = indices.iter().position(|m: &Index| m.name() == index_name) {
                 let model_index = indices.get_mut(position).unwrap();
                 let item = Item::new(column_name, order, None);
-                model_index.append_item(item);
+                model_index.items.push(item);
             } else {
                 let is_unique = row.get("is_unique").unwrap().as_bool().unwrap();
                 let is_primary = row.get("is_primary").unwrap().as_bool().unwrap();
