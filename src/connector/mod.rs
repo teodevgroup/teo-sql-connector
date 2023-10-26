@@ -1,2 +1,5 @@
-pub(crate) mod transaction;
-pub(crate) mod connection;
+pub mod transaction;
+pub mod connection;
+
+pub use connection::SQLConnection;
+pub use transaction::SQLTransaction;

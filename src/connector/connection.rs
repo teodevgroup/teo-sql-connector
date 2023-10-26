@@ -13,7 +13,7 @@ use teo_runtime::connection::connection::Connection;
 use teo_result::{Error, Result};
 use teo_runtime::connection::transaction::Transaction;
 
-pub(crate) struct SQLConnection {
+pub struct SQLConnection {
     dialect: SQLDialect,
     pool: Quaint,
     memory_mode: bool,
@@ -27,7 +27,7 @@ impl Debug for SQLConnection {
 
 impl SQLConnection {
 
-    pub(crate) async fn new(dialect: SQLDialect, url: &str, reset: bool) -> Self {
+    pub async fn new(dialect: SQLDialect, url: &str, reset: bool) -> Self {
         SQLMigration::create_database_if_needed(dialect, url, reset).await;
         let url = url_utils::normalized_url(dialect, url);
         let pool = Quaint::builder(url.as_str()).unwrap().build();
