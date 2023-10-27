@@ -1,5 +1,6 @@
 use std::fmt::{Debug, Formatter};
 use std::sync::{Arc};
+use std::sync::atomic::AtomicBool;
 use tokio::sync::Mutex;
 use async_trait::async_trait;
 use once_cell::sync::Lazy;
@@ -72,6 +73,7 @@ impl Connection for SQLConnection {
                     dialect: self.dialect,
                     conn: pooled_connection,
                     tran: Some(Arc::new(transaction)),
+                    committed: Arc::new(AtomicBool::new(false)),
                 }))
             }
             Err(err) => {

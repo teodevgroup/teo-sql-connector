@@ -1,5 +1,6 @@
 use std::fmt::{Debug, Formatter};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use async_trait::async_trait;
 use quaint_forked::{prelude::*, ast::Query as QuaintQuery};
 use quaint_forked::error::DatabaseConstraint;
@@ -35,6 +36,7 @@ pub struct SQLTransaction {
     pub dialect: SQLDialect,
     pub conn: Arc<PooledConnection>,
     pub tran: Option<Arc<OwnedTransaction>>,
+    pub committed: Arc<AtomicBool>,
 }
 
 impl Debug for SQLTransaction {
@@ -47,7 +49,7 @@ impl Debug for SQLTransaction {
 impl SQLTransaction {
     pub(super) fn new(dialect: SQLDialect, conn: Arc<PooledConnection>, tran: Option<Arc<OwnedTransaction>>) -> Self {
         Self {
-            dialect, conn, tran
+            dialect, conn, tran, committed: Arc::new(AtomicBool::new(false))
         }
     }
 }
@@ -284,13 +286,31 @@ impl Transaction for SQLTransaction {
         Execution::query_group_by(transaction_ctx.namespace(), self.queryable(), model, finder, self.dialect(), path).await
     }
 
-    async fn is_committed(&self) -> bool {
-        todo!()
+    fn is_committed(&self) -> bool {
+        self.committed.load(Ordering::SeqCst)
+    }
+
+    fn is_transaction(&self) -> bool {
+        self.tran.is_some()
     }
 
     async fn commit(&self) -> Result<()> {
         if let Some(tran) = &self.tran {
-            tran.commit().await.unwrap()
+            match tran.commit().await {
+                Ok(()) => (),
+                Err(err) => return Err(Error::new(err.to_string()))
+            }
+        }
+        self.committed.store(true, Ordering::SeqCst);
+        Ok(())
+    }
+
+    async fn abort(&self) -> Result<()> {
+        if let Some(tran) = &self.tran {
+            match tran.rollback().await {
+                Ok(()) => (),
+                Err(err) => return Err(Error::new(err.to_string()))
+            };
         }
         Ok(())
     }
@@ -299,7 +319,8 @@ impl Transaction for SQLTransaction {
         Ok(Arc::new(SQLTransaction {
             dialect: self.dialect,
             conn: self.conn.clone(),
-            tran: Some(Arc::new(start_owned_transaction(self.conn.clone(), None).await.unwrap()))
+            tran: Some(Arc::new(start_owned_transaction(self.conn.clone(), None).await.unwrap())),
+            committed: Arc::new(AtomicBool::new(false)),
         }))
     }
 }
