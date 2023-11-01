@@ -15,7 +15,6 @@ use teo_runtime::action::Action;
 use teo_runtime::connection::transaction;
 use teo_runtime::model::field::column_named::ColumnNamed;
 use teo_runtime::model::field::is_optional::IsOptional;
-use teo_runtime::model::field::named::Named;
 use teo_runtime::model::field::typed::Typed;
 use teo_runtime::model::object::input::Input;
 use teo_runtime::model::Model;
@@ -23,6 +22,7 @@ use teo_runtime::model::Object;
 use teo_runtime::namespace::Namespace;
 use teo_runtime::object::error_ext;
 use teo_runtime::request;
+use teo_runtime::traits::named::Named;
 use teo_teon::value::Value;
 use teo_teon::teon;
 
