@@ -333,7 +333,7 @@ impl Execution {
         }
     }
 
-    pub(crate) async fn query_group_by(namespace: &Namespace, conn: &dyn Queryable, model: &Model, finder: &Value, dialect: SQLDialect, path: KeyPath) -> teo_runtime::path::Result<Value> {
+    pub(crate) async fn query_group_by(namespace: &Namespace, conn: &dyn Queryable, model: &Model, finder: &Value, dialect: SQLDialect, path: KeyPath) -> teo_runtime::path::Result<Vec<Value>> {
         let stmt = Query::build_for_group_by(namespace, model, finder, dialect);
         let rows = match conn.query(QuaintQuery::from(stmt)).await {
             Ok(rows) => rows,
@@ -342,9 +342,9 @@ impl Execution {
             }
         };
         let columns = rows.columns().clone();
-        Ok(Value::Array(rows.into_iter().map(|r| {
+        Ok(rows.into_iter().map(|r| {
             Self::row_to_aggregate_value(model, &r, &columns, dialect)
-        }).collect::<Vec<Value>>()))
+        }).collect::<Vec<Value>>())
     }
 
     pub(crate) async fn query_count(namespace: &Namespace, conn: &dyn Queryable, model: &Model, finder: &Value, dialect: SQLDialect, path: KeyPath) -> teo_runtime::path::Result<u64> {

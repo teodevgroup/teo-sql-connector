@@ -282,7 +282,7 @@ impl Transaction for SQLTransaction {
         Execution::query_aggregate(transaction_ctx.namespace(), self.queryable(), model, finder, self.dialect(), path).await
     }
 
-    async fn group_by(&self, model: &'static Model, finder: &Value, transaction_ctx: transaction::Ctx, path: KeyPath) -> teo_runtime::path::Result<Value> {
+    async fn group_by(&self, model: &'static Model, finder: &Value, transaction_ctx: transaction::Ctx, path: KeyPath) -> teo_runtime::path::Result<Vec<Value>> {
         Execution::query_group_by(transaction_ctx.namespace(), self.queryable(), model, finder, self.dialect(), path).await
     }
 
