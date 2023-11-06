@@ -89,7 +89,7 @@ impl SQLTransaction {
                     values.push((column_name, PSQLArrayToSQLString::to_string_with_ft(&val, self.dialect(), field.r#type())));
                 }
             } else if let Some(property) = model.property(key) {
-                let val: Value = object.get_property(key).await.unwrap();
+                let val: Value = object.get_property_value(key).await?;
                 values.push((key, PSQLArrayToSQLString::to_string_with_ft(&val, self.dialect(), property.r#type())));
             }
         }
@@ -156,7 +156,7 @@ impl SQLTransaction {
                     values.push((column_name, PSQLArrayToSQLString::to_string_with_ft(&val, self.dialect(), field.r#type())));
                 }
             } else if let Some(property) = model.property(key) {
-                let val: Value = object.get_property(key).await.unwrap();
+                let val: Value = object.get_property_value(key).await?;
                 values.push((key, PSQLArrayToSQLString::to_string_with_ft(&val, self.dialect(), property.r#type())));
             }
         }
