@@ -44,7 +44,7 @@ impl ValueToSQLString for Value {
             } else {
                 panic!("Uncoded number.")
             }
-            Type::EnumVariant(_, _) => ToSQLInputDialect::to_sql_input(&self.as_str().unwrap(), dialect),
+            Type::EnumVariant(_) => ToSQLInputDialect::to_sql_input(&self.as_str().unwrap(), dialect),
             Type::Array(element_field) => {
                 let val = self.as_array().unwrap();
                 let mut result: Vec<String> = vec![];
@@ -77,7 +77,7 @@ impl ValueToSQLString for Value {
             } else {
                 panic!("Uncoded number.")
             }
-            Type::EnumVariant(_, _) => ToSQLInputDialect::to_sql_input(&self.as_str().unwrap(), dialect),
+            Type::EnumVariant(_) => ToSQLInputDialect::to_sql_input(&self.as_str().unwrap(), dialect),
             Type::Array(element_field) => {
                 let val = self.as_array().unwrap();
                 let mut result: Vec<String> = vec![];
@@ -346,10 +346,6 @@ impl SQLEscape for String {
 impl ToSQLInputDialect for EnumVariant {
 
     fn to_sql_input(&self, dialect: SQLDialect) -> String {
-        if self.value.is_string() {
-            self.value.as_str().unwrap().to_sql_input(dialect)
-        } else {
-            unreachable!()
-        }
+        self.value.as_str().to_sql_input(dialect)
     }
 }
