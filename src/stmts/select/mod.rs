@@ -58,7 +58,11 @@ impl<'a> ToSQLString for SQLSelectStatement<'a> {
             "".to_owned()
         };
         let r#where = if let Some(r#where) = &self.r#where {
-            " WHERE ".to_owned() + r#where
+            if !r#where.is_empty() {
+                " WHERE ".to_owned() + r#where
+            } else {
+                "".to_owned()
+            }
         } else {
             "".to_owned()
         };

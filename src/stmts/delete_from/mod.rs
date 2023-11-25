@@ -17,7 +17,11 @@ impl<'a> SQLDeleteFromStatement<'a> {
 impl<'a> ToSQLString for SQLDeleteFromStatement<'a> {
     fn to_string(&self, dialect: SQLDialect) -> String {
         let r#where = if let Some(r#where) = &self.r#where {
-            " WHERE ".to_owned() + r#where
+            if !r#where.is_empty() {
+                " WHERE ".to_owned() + r#where
+            } else {
+                "".to_owned()
+            }
         } else {
             "".to_owned()
         };
