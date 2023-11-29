@@ -106,6 +106,7 @@ impl RowDecoder {
                 return Value::Null;
             }
         }
+        let r#type = r#type.unwrap_optional();
         let value = value.unwrap();
         if r#type.is_bool() {
             if let Some(v) = value.as_bool() {

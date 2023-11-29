@@ -171,7 +171,7 @@ impl SQLTransaction {
                 return Err(error_ext::unknown_database_write_error(path.clone(), format!("{:?}", result.err().unwrap())));
             }
         }
-        let result = Execution::query(object.namespace(), self.queryable(), model, &teon!({"where": identifier, "take": 1}), self.dialect(), path.clone()).await?;
+        let result = Execution::query(object.namespace(), self.queryable(), model, &teon!({"where": identifier, "take": 1i64}), self.dialect(), path.clone()).await?;
         if result.is_empty() {
             Err(error_ext::not_found(path.clone()))
         } else {
