@@ -39,7 +39,7 @@ impl IndexExt for teo_runtime::model::Index {
     }
 
     fn sql_name(&self, table_name: &str, dialect: SQLDialect) -> Cow<str> {
-        if dialect.is_mysql() && self.r#type.is_primary() {
+        if self.r#type.is_primary() {
             Cow::Owned(self.normalize_name(table_name, dialect))
         } else {
             Cow::Borrowed(self.name.as_str())
