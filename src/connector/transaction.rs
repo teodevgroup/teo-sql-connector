@@ -2,6 +2,7 @@ use std::fmt::{Debug, Formatter};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use async_trait::async_trait;
+use itertools::Itertools;
 use quaint_forked::{prelude::*, ast::Query as QuaintQuery};
 use quaint_forked::error::DatabaseConstraint;
 use quaint_forked::error::ErrorKind::UniqueConstraintViolation;
@@ -185,7 +186,11 @@ impl SQLTransaction {
             UniqueConstraintViolation { constraint } => {
                 match constraint {
                     DatabaseConstraint::Fields(fields) => {
-                        error_ext::unique_value_duplicated(path, fields.get(0).unwrap().to_string())
+                        if fields.len() == 1 {
+                            error_ext::unique_value_duplicated(path + fields.get(0).unwrap(), fields.get(0).unwrap().to_string())
+                        } else {
+                            error_ext::unique_value_duplicated(path, fields.iter().map(|f| f).join(", "))
+                        }
                     }
                     DatabaseConstraint::Index(index) => {
                         error_ext::unique_value_duplicated(path, index.clone())
