@@ -33,7 +33,7 @@ impl<'a> ToSQLString for SQLInsertIntoStatement<'a> {
             values.push(v);
         }
         if dialect == SQLDialect::PostgreSQL {
-            format!("INSERT INTO {}({}) VALUES({}){};", self.table, keys.iter().map(|k| format!("\"{}\"", k)).collect::<Vec<String>>().join(","), values.join(","), if self.returning.is_empty() {
+            format!("INSERT INTO \"{}\"({}) VALUES({}){};", self.table, keys.iter().map(|k| format!("\"{}\"", k)).collect::<Vec<String>>().join(","), values.join(","), if self.returning.is_empty() {
                 "".to_owned()
             } else {
                 "  RETURNING ".to_owned() + &self.returning.join(",")
