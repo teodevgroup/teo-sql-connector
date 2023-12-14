@@ -80,6 +80,7 @@ impl<'a> ToSQLString for SQLSelectStatement<'a> {
         } else {
             "".to_owned()
         };
-        format!("SELECT {columns} from {}{}{}{}{}{}", self.from, left_join, inner_join, r#where, order_by, limit)
+        let escape = dialect.escape();
+        format!("SELECT {columns} from {}{}{}{}{}{}{}{}", escape, self.from, escape, left_join, inner_join, r#where, order_by, limit)
     }
 }

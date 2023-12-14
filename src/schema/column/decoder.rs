@@ -203,7 +203,7 @@ impl ColumnDecoder {
 FROM   pg_index i
 JOIN   pg_attribute a ON a.attrelid = i.indrelid
                      AND a.attnum = ANY(i.indkey)
-WHERE  i.indrelid = '{}'::regclass
+WHERE  i.indrelid = '\"{}\"'::regclass
 AND    i.indisprimary", table_name);
         let result = conn.query(Query::from(sql)).await.unwrap();
         result.into_iter().map(|r| {

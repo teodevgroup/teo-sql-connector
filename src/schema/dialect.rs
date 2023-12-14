@@ -52,7 +52,7 @@ impl SQLDialect {
 
     pub(crate) fn int64_type(&self) -> DatabaseType {
         match self {
-            SQLDialect::MySQL => DatabaseType::MySQLType(MySQLType::Int(None, false)),
+            SQLDialect::MySQL => DatabaseType::MySQLType(MySQLType::Int(None, true)),
             SQLDialect::PostgreSQL => DatabaseType::PostgreSQLType(PostgreSQLType::Integer),
             SQLDialect::SQLite => DatabaseType::SQLiteType(SQLiteType::Integer),
             SQLDialect::MSSQL => panic!(),

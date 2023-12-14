@@ -226,6 +226,7 @@ impl SQLMigration {
                             ColumnManipulation::AlterColumn(old_column, new_column) => {
                                 if dialect != SQLDialect::PostgreSQL {
                                     let alter = SQL::alter_table(table_name).modify(new_column.clone().clone()).to_string(dialect);
+                                    println!("see this alter : {}", alter);
                                     conn.execute(Query::from(alter)).await.unwrap();
                                 } else {
                                     let clauses = Self::psql_alter_clauses(table_name, *old_column, *new_column);

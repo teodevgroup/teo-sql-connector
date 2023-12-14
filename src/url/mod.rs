@@ -51,7 +51,7 @@ pub(crate) mod url_utils {
             }
             SQLDialect::PostgreSQL => {
                 if url.username() == "" {
-                    if whoami::platform() == Platform::MacOS && url.port().is_some() && url.port().unwrap() == 3306 {
+                    if whoami::platform() == Platform::MacOS && url.port().is_some() && url.port().unwrap() == 5432 {
                         let username = whoami::username();
                         url.set_username(username.as_str()).unwrap();
                     } else {
