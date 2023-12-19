@@ -210,11 +210,12 @@ impl Query {
                         through_columns_string.iter().map(|k| k.as_str()).collect::<Vec<&str>>()
                     } else { vec![] };
                     for (key, value) in value.as_dictionary().unwrap() {
+                        let escape = dialect.escape();
                         let from = if !has_join_table {
-                            format!("{} AS t", &model.table_name)
+                            format!("{escape}{}{escape} AS t", &model.table_name)
                         } else {
                             let through_table_name = namespace.model_at_path(&relation.through_path().unwrap()).unwrap().table_name();
-                            format!("{} AS t", through_table_name)
+                            format!("{escape}{}{escape} AS t", through_table_name)
                         };
                         let opposite_model = namespace.model_at_path(&relation.model_path()).unwrap();
                         let relation_table_name = &opposite_model.table_name;
@@ -404,9 +405,9 @@ impl Query {
             false
         };
         let table_name = if additional_left_join.is_some() {
-            (model.table_name.to_string() + " AS t")
+            (model.table_name.to_string().escape(dialect) + " AS t")
         } else {
-            model.table_name.to_string()
+            model.table_name.to_string().escape(dialect)
         };
         let mut columns: Vec<String> = vec![];
         if additional_left_join.is_some() {

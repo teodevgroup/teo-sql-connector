@@ -47,7 +47,8 @@ impl Execution {
                 if relation_name == "c" { // cursor fetch, should remove
                     None
                 } else {
-                    let opposite_model = namespace.model_at_path(&vec![relation_name]).unwrap();
+                    let relation = model.relation(relation_name).unwrap();
+                    let opposite_model = namespace.model_at_path(&relation.model_path()).unwrap();
                     let field = opposite_model.field(field_name).unwrap();
                     Some((column_name.to_owned(), RowDecoder::decode(field.r#type(), field.is_optional(), row, column_name, dialect)))
                 }

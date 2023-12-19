@@ -1,6 +1,7 @@
+use std::borrow::Cow;
 use crate::query::escape_wisdom;
 use crate::schema::dialect::SQLDialect;
-use crate::schema::value::encode::ToSQLString;
+use crate::schema::value::encode::{SQLEscape, ToSQLString};
 
 pub mod r#where;
 
@@ -53,7 +54,11 @@ impl<'a> ToSQLString for SQLSelectStatement<'a> {
             "".to_owned()
         };
         let inner_join = if let Some(inner_join) = &self.inner_join {
-            " INNER JOIN ".to_owned() + inner_join
+            " INNER JOIN ".to_owned() + &if inner_join.is_escaped() {
+                Cow::Borrowed(inner_join.as_str())
+            } else {
+                Cow::Owned(inner_join.escape(dialect))
+            }
         } else {
             "".to_owned()
         };
@@ -81,6 +86,11 @@ impl<'a> ToSQLString for SQLSelectStatement<'a> {
             "".to_owned()
         };
         let escape = dialect.escape();
-        format!("SELECT {columns} from {}{}{}{}{}{}{}{}", escape, self.from, escape, left_join, inner_join, r#where, order_by, limit)
+        let from_escaped = if self.from.starts_with("'") || self.from.starts_with("\"") || self.from.starts_with("`") {
+            Cow::Borrowed(self.from)
+        } else {
+            Cow::Owned(format!("{}{}{}", escape, self.from, escape))
+        };
+        format!("SELECT {columns} from {}{}{}{}{}{}", from_escaped, left_join, inner_join, r#where, order_by, limit)
     }
 }

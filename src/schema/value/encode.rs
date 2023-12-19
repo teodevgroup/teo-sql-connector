@@ -320,10 +320,14 @@ impl WrapInArray for String {
 }
 
 pub trait SQLEscape {
+    fn is_escaped(&self) -> bool;
     fn escape(&self, dialect: SQLDialect) -> String;
 }
 
 impl SQLEscape for &str {
+    fn is_escaped(&self) -> bool {
+        self.starts_with("'") || self.starts_with("\"") || self.starts_with("`")
+    }
     fn escape(&self, dialect: SQLDialect) -> String {
         match dialect {
             SQLDialect::MySQL => format!("`{}`", self),
@@ -334,6 +338,11 @@ impl SQLEscape for &str {
 }
 
 impl SQLEscape for String {
+
+    fn is_escaped(&self) -> bool {
+        self.starts_with("'") || self.starts_with("\"") || self.starts_with("`")
+    }
+
     fn escape(&self, dialect: SQLDialect) -> String {
         match dialect {
             SQLDialect::MySQL => format!("`{}`", self),
