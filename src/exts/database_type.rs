@@ -43,29 +43,29 @@ fn to_mysql_string(t: &MySQLType) -> String {
         MySQLType::MediumText => "MEDIUMTEXT".to_string(),
         MySQLType::LongText => "LONGTEXT".to_string(),
         MySQLType::Bit(len) => format!("BIT{}", if let Some(len) = len { format!("({len})") } else { "".to_owned() }),
-        MySQLType::TinyInt(len, signed) => {
+        MySQLType::TinyInt(len, unsigned) => {
             let len = if let Some(len) = len { format!("({len})") } else { "".to_owned() };
-            let suffix = if *signed { "" } else { " UNSIGNED" };
+            let suffix = if !*unsigned { "" } else { " UNSIGNED" };
             format!("TINYINT{}{}", len, suffix)
         }
-        MySQLType::Int(len, signed) => {
+        MySQLType::Int(len, unsigned) => {
             let len = if let Some(len) = len { format!("({})", len) } else { "".to_owned() };
-            let suffix = if *signed { "" } else { " UNSIGNED" };
+            let suffix = if !*unsigned { "" } else { " UNSIGNED" };
             format!("INT{}{}", len, suffix)
         }
-        MySQLType::SmallInt(len, signed) => {
+        MySQLType::SmallInt(len, unsigned) => {
             let len = if let Some(len) = len { format!("({})", len) } else { "".to_owned() };
-            let suffix = if *signed { "" } else { " UNSIGNED" };
+            let suffix = if !*unsigned { "" } else { " UNSIGNED" };
             format!("SMALLINT{}{}", len, suffix)
         }
-        MySQLType::MediumInt(len, signed) => {
+        MySQLType::MediumInt(len, unsigned) => {
             let len = if let Some(len) = len { format!("({})", len) } else { "".to_owned() };
-            let suffix = if *signed { "" } else { " UNSIGNED" };
+            let suffix = if !*unsigned { "" } else { " UNSIGNED" };
             format!("MEDIUMINT{}{}", len, suffix)
         }
-        MySQLType::BigInt(len, signed) => {
+        MySQLType::BigInt(len, unsigned) => {
             let len = if let Some(len) = len { format!("({})", len) } else { "".to_owned() };
-            let suffix = if *signed { "" } else { " UNSIGNED" };
+            let suffix = if !*unsigned { "" } else { " UNSIGNED" };
             format!("BIGINT{}{}", len, suffix)
         }
         MySQLType::Year => panic!(),
