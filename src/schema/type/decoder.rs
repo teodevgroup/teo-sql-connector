@@ -2,7 +2,7 @@ use std::str::FromStr;
 use teo_runtime::database::r#type::DatabaseType;
 use regex::Regex;
 use snailquote::unescape;
-use teo_runtime::database::mysql::r#type::MySQLType;
+use teo_runtime::database::mysql::r#type::{MySQLEnum, MySQLType};
 use teo_runtime::database::postgres::r#type::PostgreSQLType;
 use teo_runtime::database::sqlite::r#type::SQLiteType;
 use crate::schema::dialect::SQLDialect;
@@ -58,8 +58,7 @@ fn mysql_type_to_database_type(r#type: &str) -> MySQLType {
                     let choices = arg.unwrap();
                     let choices_vec = choices.split(",");
                     let unescaped: Vec<String> = choices_vec.map(|s| unescape(s).unwrap()).collect();
-                    //MySQLType::Enum(DbEnum { choices: unescaped })
-                    panic!()
+                    MySQLType::Enum(MySQLEnum { variants: unescaped })
                 }
                 _ => panic!("Unhandled type '{}' '{:?}' '{:?}'.", name, trailing1, arg)
             }

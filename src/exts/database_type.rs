@@ -1,3 +1,4 @@
+use itertools::Itertools;
 use teo_runtime::database::mysql::r#type::MySQLType;
 use teo_runtime::database::postgres::r#type::PostgreSQLType;
 use teo_runtime::database::r#type::DatabaseType;
@@ -83,6 +84,7 @@ fn to_mysql_string(t: &MySQLType) -> String {
         MySQLType::TinyBlob => "TINYBLOB".to_string(),
         MySQLType::Blob => "BLOB".to_string(),
         MySQLType::MediumBlob => "MEDIUMBLOB".to_string(),
+        MySQLType::Enum(e) => format!("ENUM ({})", e.variants.iter().map(|v| format!("'{}'", v)).join(", ")),
     }
 }
 
