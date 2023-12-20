@@ -234,7 +234,7 @@ impl Execution {
                         join_parts.push(format!("t.{} = j.{}", reference_column_name.escape(dialect), field_column_name.escape(dialect)));
                     }
                     let joins = join_parts.join(" AND ");
-                    let left_join = format!("{} AS j ON {}", &through_model.table_name, joins);
+                    let left_join = format!("{} AS j ON {}", &through_model.table_name.escape(dialect), joins);
                     let (through_table, through_relation) = namespace.through_relation(relation);
                     let names = if through_relation.len() == 1 { // todo: column name
                         format!("j.{}", through_table.field(through_relation.fields().get(0).unwrap()).unwrap().column_name().escape(dialect))
