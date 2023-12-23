@@ -33,7 +33,7 @@ impl ValueToSQLString for Value {
                 return "NULL".to_owned()
             }
         }
-        match r#type {
+        match r#type.unwrap_optional() {
             Type::String => ToSQLInputDialect::to_sql_input(&self.as_str().unwrap(), dialect),
             Type::Bool => self.as_bool().unwrap().to_sql_input(),
             Type::Int | Type::Int64 |
@@ -66,7 +66,7 @@ impl ValueToSQLString for Value {
                 return "NULL".to_owned()
             }
         }
-        match r#type {
+        match r#type.unwrap_optional() {
             Type::String => ToSQLInputDialect::to_sql_input(&self.as_str().unwrap(), dialect),
             Type::Bool => self.as_bool().unwrap().to_sql_input(),
             Type::Int | Type::Int64 |
