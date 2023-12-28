@@ -28,7 +28,11 @@ impl<'a> SQLSelectStatement<'a> {
     }
 
     pub fn r#where(&mut self, r#where: String) -> &mut Self {
-        self.r#where = Some(r#where);
+        if r#where.as_str() == "" || r#where.as_str() == "()" {
+            self.r#where = None;
+        } else {
+            self.r#where = Some(r#where);
+        }
         self
     }
 
