@@ -73,7 +73,7 @@ fn to_mysql_string(t: &MySQLType) -> String {
         MySQLType::Float => "FLOAT".to_string(),
         MySQLType::Double => "DOUBLE".to_string(),
         MySQLType::Decimal(p, s) => format!("DECIMAL({}, {})", p, s),
-        MySQLType::DateTime(fsp) => format!("DATATIME({})", fsp),
+        MySQLType::DateTime(fsp) => format!("DATETIME({})", fsp),
         MySQLType::Date => "DATE".to_string(),
         MySQLType::Time(_) => panic!(),
         MySQLType::Timestamp(p) => format!("TIMESTAMP({p})"),
