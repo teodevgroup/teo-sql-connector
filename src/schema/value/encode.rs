@@ -39,10 +39,14 @@ impl ValueToSQLString for Value {
             Type::Int | Type::Int64 |
             Type::Float32 | Type::Float => if let Some(val) = self.as_float() {
                 val.to_string()
+            } else if let Some(val) = self.as_float32() {
+                val.to_string()
+            } else if let Some(val) = self.as_int64() {
+                val.to_string()
             } else if let Some(val) = self.as_int() {
                 val.to_string()
             } else {
-                panic!("Uncoded number.")
+                panic!("cannot encode number")
             }
             Type::EnumVariant(_) => ToSQLInputDialect::to_sql_input(&self.as_str().unwrap(), dialect),
             Type::Array(element_field) => {
