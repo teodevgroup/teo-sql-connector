@@ -117,7 +117,7 @@ impl Execution {
         } else {
             Cow::Borrowed(value)
         };
-        let stmt = Query::build(namespace, model, value_for_build.as_ref(), dialect, additional_where, additional_left_join, join_table_results, force_negative_take);
+        let stmt = Query::build(namespace, model, value_for_build.as_ref(), dialect, additional_where, additional_left_join, join_table_results, force_negative_take)?;
         // println!("sql query stmt: {}", &stmt);
         let reverse = Input::has_negative_take(value);
         let rows = match conn.query(QuaintQuery::from(stmt)).await {
@@ -322,7 +322,7 @@ impl Execution {
     }
 
     pub(crate) async fn query_aggregate(namespace: &Namespace, conn: &dyn Queryable, model: &Model, finder: &Value, dialect: SQLDialect, path: KeyPath) -> teo_runtime::path::Result<Value> {
-        let stmt = Query::build_for_aggregate(namespace, model, finder, dialect);
+        let stmt = Query::build_for_aggregate(namespace, model, finder, dialect)?;
         match conn.query(QuaintQuery::from(&*stmt)).await {
             Ok(result_set) => {
                 let columns = result_set.columns().clone();
@@ -336,7 +336,7 @@ impl Execution {
     }
 
     pub(crate) async fn query_group_by(namespace: &Namespace, conn: &dyn Queryable, model: &Model, finder: &Value, dialect: SQLDialect, path: KeyPath) -> teo_runtime::path::Result<Vec<Value>> {
-        let stmt = Query::build_for_group_by(namespace, model, finder, dialect);
+        let stmt = Query::build_for_group_by(namespace, model, finder, dialect)?;
         let rows = match conn.query(QuaintQuery::from(stmt)).await {
             Ok(rows) => rows,
             Err(err) => {
@@ -350,7 +350,7 @@ impl Execution {
     }
 
     pub(crate) async fn query_count(namespace: &Namespace, conn: &dyn Queryable, model: &Model, finder: &Value, dialect: SQLDialect, path: KeyPath) -> teo_runtime::path::Result<u64> {
-        let stmt = Query::build_for_count(namespace, model, finder, dialect, None, None, None, false);
+        let stmt = Query::build_for_count(namespace, model, finder, dialect, None, None, None, false)?;
         match conn.query(QuaintQuery::from(stmt)).await {
             Ok(result) => {
                 let result = result.into_iter().next().unwrap();

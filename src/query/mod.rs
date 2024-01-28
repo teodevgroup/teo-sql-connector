@@ -5,6 +5,7 @@ use itertools::Itertools;
 use maplit::{btreemap};
 use once_cell::sync::Lazy;
 use teo_parser::r#type::Type;
+use teo_result::{Error, Result};
 use crate::schema::dialect::SQLDialect;
 use crate::schema::value::encode::{IfIMode, SQLEscape, ToLike, ToSQLString, ToWrapped, ValueToSQLString, WrapInArray};
 use crate::stmts::select::r#where::{ToWrappedSQLString, WhereClause};
@@ -311,8 +312,8 @@ impl Query {
         additional_left_join: Option<String>,
         join_table_results: Option<Vec<String>>,
         force_negative_take: bool,
-    ) -> String {
-        format!("SELECT COUNT(*) FROM ({}) AS _", Self::build(namespace, model, value, dialect, additional_where, additional_left_join, join_table_results, force_negative_take))
+    ) -> Result<String> {
+        Ok(format!("SELECT COUNT(*) FROM ({}) AS _", Self::build(namespace, model, value, dialect, additional_where, additional_left_join, join_table_results, force_negative_take)?))
     }
 
     pub(crate) fn build_for_group_by(
@@ -320,8 +321,8 @@ impl Query {
         model: &Model,
         value: &Value,
         dialect: SQLDialect,
-    ) -> String {
-        let aggregate = Self::build_for_aggregate(namespace, model, value, dialect);
+    ) -> Result<String> {
+        let aggregate = Self::build_for_aggregate(namespace, model, value, dialect)?;
         let map = value.as_dictionary().unwrap();
         let by = map.get("by").unwrap().as_array().unwrap().iter().map(|v| {
             let field_name = v.as_str().unwrap();
@@ -333,7 +334,7 @@ impl Query {
         } else {
             "".to_owned()
         };
-        format!("{} GROUP BY {}{}", aggregate, by, having)
+        Ok(format!("{} GROUP BY {}{}", aggregate, by, having))
     }
 
     pub(crate) fn build_for_aggregate(
@@ -341,7 +342,7 @@ impl Query {
         model: &Model,
         value: &Value,
         dialect: SQLDialect,
-    ) -> String {
+    ) -> Result<String> {
         let map = value.as_dictionary().unwrap();
         let escape = dialect.escape();
         let mut results: Vec<String> = vec![];
@@ -377,7 +378,7 @@ impl Query {
                 results.push(model.field(field_name).unwrap().column_name().to_string());
             }
         }
-        format!("SELECT {} FROM ({}) AS _", results.join(","), Self::build(namespace, model, value, dialect, None, None, None, false))
+        Ok(format!("SELECT {} FROM ({}) AS _", results.join(","), Self::build(namespace, model, value, dialect, None, None, None, false)?))
     }
 
     pub(crate) fn build(
@@ -389,7 +390,7 @@ impl Query {
         additional_left_join: Option<String>,
         join_table_results: Option<Vec<String>>,
         force_negative_take: bool,
-    ) -> String {
+    ) -> Result<String> {
         let r#where = value.get("where");
         let order_by = value.get("orderBy");
         let page_size = value.get("pageSize");
@@ -420,6 +421,9 @@ impl Query {
         }
         let column_refs = columns.iter().map(|c| c.as_str()).collect::<Vec<&str>>();
         let from = if let Some(cursor) = cursor {
+            if order_by.is_none() {
+                return Err(Error::new("cursor is invalid without order by argument"));
+            }
             let order_by = order_by.unwrap().as_array().unwrap().get(0).unwrap().as_dictionary().unwrap();
             let key = order_by.keys().next().unwrap();
             let column_key = model.field(key).unwrap().column_name();
@@ -487,7 +491,7 @@ impl Query {
             }
         }
         let result = stmt.to_string(dialect);
-        result
+        Ok(result)
     }
 
     fn default_desc_order(model: &Model) -> Value {
