@@ -86,11 +86,15 @@ impl Query {
                     "in" => {
                         if !value.as_array().unwrap().is_empty() {
                             result.push(Self::where_entry_array(&column_name, r#type, optional, value, "IN", dialect));
+                        } else {
+                            result.push("NULL is not NULL".to_owned())
                         }
                     }
                     "notIn" => {
                         if !value.as_array().unwrap().is_empty() {
                             result.push(Self::where_entry_array(&column_name, r#type, optional, value, "NOT IN", dialect));
+                        } else {
+                            result.push("NULL is NULL".to_owned())
                         }
                     }
                     "contains" => {
