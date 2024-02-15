@@ -276,9 +276,23 @@ impl Transaction for SQLTransaction {
         Execution::query_objects(transaction_ctx.namespace(), self.queryable(), model, finder, self.dialect(), action, transaction_ctx, req_ctx, path).await
     }
 
-    async fn count(&self, model: &'static Model, finder: &Value, transaction_ctx: transaction::Ctx, path: KeyPath) -> teo_runtime::path::Result<usize> {
+    async fn count(&self, model: &'static Model, finder: &Value, transaction_ctx: transaction::Ctx, path: KeyPath) -> teo_runtime::path::Result<Value> {
+        match Execution::query_count(transaction_ctx.namespace(), self.queryable(), model, finder, self.dialect(), path).await {
+            Ok(c) => Ok(Value::Int64(c as i64)),
+            Err(e) => Err(e),
+        }
+    }
+
+    async fn count_objects(&self, model: &'static Model, finder: &Value, transaction_ctx: transaction::Ctx, path: KeyPath) -> teo_runtime::path::Result<usize> {
         match Execution::query_count(transaction_ctx.namespace(), self.queryable(), model, finder, self.dialect(), path).await {
             Ok(c) => Ok(c as usize),
+            Err(e) => Err(e),
+        }
+    }
+
+    async fn count_fields(&self, model: &'static Model, finder: &Value, transaction_ctx: transaction::Ctx, path: KeyPath) -> teo_runtime::path::Result<Value> {
+        match Execution::query_count(transaction_ctx.namespace(), self.queryable(), model, finder, self.dialect(), path).await {
+            Ok(c) => Ok(Value::Int64(c as i64)),
             Err(e) => Err(e),
         }
     }
