@@ -349,18 +349,39 @@ impl Execution {
         }).collect::<Vec<Value>>())
     }
 
-    pub(crate) async fn query_count(namespace: &Namespace, conn: &dyn Queryable, model: &Model, finder: &Value, dialect: SQLDialect, path: KeyPath) -> teo_runtime::path::Result<u64> {
+    pub(crate) async fn query_count(namespace: &Namespace, conn: &dyn Queryable, model: &Model, finder: &Value, dialect: SQLDialect, path: KeyPath) -> teo_runtime::path::Result<Value> {
+        if finder.get("select").is_some() {
+            Self::query_count_fields(namespace, conn, model, finder, dialect, path).await
+        } else {
+            let result = Self::query_count_objects(namespace, conn, model, finder, dialect, path).await?;
+            Ok(Value::Int64(result as i64))
+        }
+    }
+
+    pub(crate) async fn query_count_objects(namespace: &Namespace, conn: &dyn Queryable, model: &Model, finder: &Value, dialect: SQLDialect, path: KeyPath) -> teo_runtime::path::Result<usize> {
         let stmt = Query::build_for_count(namespace, model, finder, dialect, None, None, None, false)?;
         match conn.query(QuaintQuery::from(stmt)).await {
             Ok(result) => {
                 let result = result.into_iter().next().unwrap();
                 let count: i64 = result.into_iter().next().unwrap().as_i64().unwrap();
-                Ok(count as u64)
+                Ok(count as usize)
             },
             Err(err) => {
                 return Err(error_ext::unknown_database_find_error(path.clone(), format!("{:?}", err)));
             }
         }
+    }
+
+    pub(crate) async fn query_count_fields(namespace: &Namespace, conn: &dyn Queryable, model: &Model, finder: &Value, dialect: SQLDialect, path: KeyPath) -> teo_runtime::path::Result<Value> {
+        let new_finder = Value::Dictionary(finder.as_dictionary().unwrap().iter().map(|(k, v)| {
+            if k.as_str() == "select" {
+                ("_count".to_owned(), v.clone())
+            } else {
+                (k.to_owned(), v.clone())
+            }
+        }).collect());
+        let aggregate_value = Self::query_aggregate(namespace, conn, model, &new_finder, dialect, path).await?;
+        Ok(aggregate_value.get("_count").unwrap().clone())
     }
 
     fn without_paging_and_skip_take(value: &Value) -> Cow<Value> {

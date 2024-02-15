@@ -277,24 +277,15 @@ impl Transaction for SQLTransaction {
     }
 
     async fn count(&self, model: &'static Model, finder: &Value, transaction_ctx: transaction::Ctx, path: KeyPath) -> teo_runtime::path::Result<Value> {
-        match Execution::query_count(transaction_ctx.namespace(), self.queryable(), model, finder, self.dialect(), path).await {
-            Ok(c) => Ok(Value::Int64(c as i64)),
-            Err(e) => Err(e),
-        }
+        Execution::query_count(transaction_ctx.namespace(), self.queryable(), model, finder, self.dialect(), path).await
     }
 
     async fn count_objects(&self, model: &'static Model, finder: &Value, transaction_ctx: transaction::Ctx, path: KeyPath) -> teo_runtime::path::Result<usize> {
-        match Execution::query_count(transaction_ctx.namespace(), self.queryable(), model, finder, self.dialect(), path).await {
-            Ok(c) => Ok(c as usize),
-            Err(e) => Err(e),
-        }
+        Execution::query_count_objects(transaction_ctx.namespace(), self.queryable(), model, finder, self.dialect(), path).await
     }
 
     async fn count_fields(&self, model: &'static Model, finder: &Value, transaction_ctx: transaction::Ctx, path: KeyPath) -> teo_runtime::path::Result<Value> {
-        match Execution::query_count(transaction_ctx.namespace(), self.queryable(), model, finder, self.dialect(), path).await {
-            Ok(c) => Ok(Value::Int64(c as i64)),
-            Err(e) => Err(e),
-        }
+        Execution::query_count_fields(transaction_ctx.namespace(), self.queryable(), model, finder, self.dialect(), path).await
     }
 
     async fn aggregate(&self, model: &'static Model, finder: &Value, transaction_ctx: transaction::Ctx, path: KeyPath) -> teo_runtime::path::Result<Value> {
