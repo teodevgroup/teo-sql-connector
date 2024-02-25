@@ -1,6 +1,6 @@
 [package]
 name = "teo-sql-connector"
-version = "0.2.4"
+version = "0.2.8"
 edition = "2021"
 description = "SQL connector for Teo"
 license = "Apache-2.0"
@@ -11,10 +11,10 @@ repository = "https://github.com/teocloud/teo-sql-connector"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-teo-result = "0.2.0"
-teo-teon = "0.2.0"
-teo-parser = { version = "0.2.4", path = "../teo-parser" }
-teo-runtime = { version = "0.2.4", path = "../teo-runtime" }
+teo-result = { version = "0.2.8", path = "../teo-result" }
+teo-teon = { version = "0.2.8", path = "../teo-teon" }
+teo-parser = { version = "0.2.8", path = "../teo-parser" }
+teo-runtime = { version = "0.2.8", path = "../teo-runtime" }
 quaint-forked = { version = "0.1.3-alpha.5", features = [ "all" ] }
 whoami = { version = "1.4.1" }
 async-recursion = "1.0.5"
@@ -22,7 +22,7 @@ async-trait = "0.1.74"
 array_tool = "1.0.3"
 once_cell = "1.19"
 maplit = "1.0.2"
-indexmap = { version = "2.1.0", features = ["serde"] }
+indexmap = { version = "2.2.3", features = ["serde"] }
 path-absolutize = "3.1.1"
 url = "2.5"
 tokio = { version = "1.0", features = ["full"] }

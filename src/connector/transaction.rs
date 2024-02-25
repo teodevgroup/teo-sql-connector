@@ -77,7 +77,7 @@ impl SQLTransaction {
         self.tran.as_ref()
     }
 
-    async fn create_object(&self, object: &Object, path: KeyPath) -> teo_runtime::path::Result<()> {
+    async fn create_object(&self, object: &Object, path: KeyPath) -> teo_result::Result<()> {
         let model = object.model();
         let keys = object.keys_for_save();
         let auto_keys = &model.cache.auto_keys;
@@ -135,7 +135,7 @@ impl SQLTransaction {
         }
     }
 
-    async fn update_object(&self, object: &Object, path: KeyPath) -> teo_runtime::path::Result<()> {
+    async fn update_object(&self, object: &Object, path: KeyPath) -> teo_result::Result<()> {
         let model = object.model();
         let keys = object.keys_for_save();
         let mut values: Vec<(&str, String)> = vec![];
@@ -181,7 +181,7 @@ impl SQLTransaction {
         }
     }
 
-    fn handle_err_result(&self, err: quaint_forked::error::Error, path: KeyPath) -> teo_runtime::path::Error {
+    fn handle_err_result(&self, err: quaint_forked::error::Error, path: KeyPath) -> teo_result::Error {
         match err.kind() {
             UniqueConstraintViolation { constraint } => {
                 match constraint {
@@ -239,7 +239,7 @@ impl Transaction for SQLTransaction {
         }
     }
 
-    async fn save_object(&self, object: &Object, path: KeyPath) -> teo_runtime::path::Result<()> {
+    async fn save_object(&self, object: &Object, path: KeyPath) -> teo_result::Result<()> {
         if object.is_new() {
             self.create_object(object, path).await
         } else {
@@ -247,7 +247,7 @@ impl Transaction for SQLTransaction {
         }
     }
 
-    async fn delete_object(&self, object: &Object, path: KeyPath) -> teo_runtime::path::Result<()> {
+    async fn delete_object(&self, object: &Object, path: KeyPath) -> teo_result::Result<()> {
         if object.is_new() {
             return Err(error_ext::object_is_not_saved_thus_cant_be_deleted(path));
         }
@@ -263,7 +263,7 @@ impl Transaction for SQLTransaction {
         }
     }
 
-    async fn find_unique(&self, model: &'static Model, finder: &Value, ignore_select_and_include: bool, action: Action, transaction_ctx: transaction::Ctx, req_ctx: Option<Ctx>, path: KeyPath) -> teo_runtime::path::Result<Option<Object>> {
+    async fn find_unique(&self, model: &'static Model, finder: &Value, ignore_select_and_include: bool, action: Action, transaction_ctx: transaction::Ctx, req_ctx: Option<Ctx>, path: KeyPath) -> teo_result::Result<Option<Object>> {
         let objects = Execution::query_objects(transaction_ctx.namespace(), self.queryable(), model, finder, self.dialect(), action, transaction_ctx, req_ctx, path).await?;
         if objects.is_empty() {
             Ok(None)
@@ -272,27 +272,27 @@ impl Transaction for SQLTransaction {
         }
     }
 
-    async fn find_many(&self, model: &'static Model, finder: &Value, ignore_select_and_include: bool, action: Action, transaction_ctx: transaction::Ctx, req_ctx: Option<Ctx>, path: KeyPath) -> teo_runtime::path::Result<Vec<Object>> {
+    async fn find_many(&self, model: &'static Model, finder: &Value, ignore_select_and_include: bool, action: Action, transaction_ctx: transaction::Ctx, req_ctx: Option<Ctx>, path: KeyPath) -> teo_result::Result<Vec<Object>> {
         Execution::query_objects(transaction_ctx.namespace(), self.queryable(), model, finder, self.dialect(), action, transaction_ctx, req_ctx, path).await
     }
 
-    async fn count(&self, model: &'static Model, finder: &Value, transaction_ctx: transaction::Ctx, path: KeyPath) -> teo_runtime::path::Result<Value> {
+    async fn count(&self, model: &'static Model, finder: &Value, transaction_ctx: transaction::Ctx, path: KeyPath) -> teo_result::Result<Value> {
         Execution::query_count(transaction_ctx.namespace(), self.queryable(), model, finder, self.dialect(), path).await
     }
 
-    async fn count_objects(&self, model: &'static Model, finder: &Value, transaction_ctx: transaction::Ctx, path: KeyPath) -> teo_runtime::path::Result<usize> {
+    async fn count_objects(&self, model: &'static Model, finder: &Value, transaction_ctx: transaction::Ctx, path: KeyPath) -> teo_result::Result<usize> {
         Execution::query_count_objects(transaction_ctx.namespace(), self.queryable(), model, finder, self.dialect(), path).await
     }
 
-    async fn count_fields(&self, model: &'static Model, finder: &Value, transaction_ctx: transaction::Ctx, path: KeyPath) -> teo_runtime::path::Result<Value> {
+    async fn count_fields(&self, model: &'static Model, finder: &Value, transaction_ctx: transaction::Ctx, path: KeyPath) -> teo_result::Result<Value> {
         Execution::query_count_fields(transaction_ctx.namespace(), self.queryable(), model, finder, self.dialect(), path).await
     }
 
-    async fn aggregate(&self, model: &'static Model, finder: &Value, transaction_ctx: transaction::Ctx, path: KeyPath) -> teo_runtime::path::Result<Value> {
+    async fn aggregate(&self, model: &'static Model, finder: &Value, transaction_ctx: transaction::Ctx, path: KeyPath) -> teo_result::Result<Value> {
         Execution::query_aggregate(transaction_ctx.namespace(), self.queryable(), model, finder, self.dialect(), path).await
     }
 
-    async fn group_by(&self, model: &'static Model, finder: &Value, transaction_ctx: transaction::Ctx, path: KeyPath) -> teo_runtime::path::Result<Vec<Value>> {
+    async fn group_by(&self, model: &'static Model, finder: &Value, transaction_ctx: transaction::Ctx, path: KeyPath) -> teo_result::Result<Vec<Value>> {
         Execution::query_group_by(transaction_ctx.namespace(), self.queryable(), model, finder, self.dialect(), path).await
     }
 

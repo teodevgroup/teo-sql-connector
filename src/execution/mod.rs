@@ -90,7 +90,7 @@ impl Execution {
         Value::Dictionary(retval)
     }
 
-    pub(crate) async fn query_objects<'a>(namespace: &Namespace, conn: &'a dyn Queryable, model: &'static Model, finder: &'a Value, dialect: SQLDialect, action: Action, transaction_ctx: transaction::Ctx, req_ctx: Option<request::Ctx>, path: KeyPath) -> teo_runtime::path::Result<Vec<Object>> {
+    pub(crate) async fn query_objects<'a>(namespace: &Namespace, conn: &'a dyn Queryable, model: &'static Model, finder: &'a Value, dialect: SQLDialect, action: Action, transaction_ctx: transaction::Ctx, req_ctx: Option<request::Ctx>, path: KeyPath) -> teo_result::Result<Vec<Object>> {
         let values = Self::query(namespace, conn, model, finder, dialect, path).await?;
         let select = finder.as_dictionary().unwrap().get("select");
         let include = finder.as_dictionary().unwrap().get("include");
@@ -104,7 +104,7 @@ impl Execution {
     }
 
     #[async_recursion]
-    async fn query_internal(namespace: &Namespace, conn: &dyn Queryable, model: &Model, value: &Value, dialect: SQLDialect, additional_where: Option<String>, additional_left_join: Option<String>, join_table_results: Option<Vec<String>>, force_negative_take: bool, additional_distinct: Option<Vec<String>>, path: KeyPath) -> teo_runtime::path::Result<Vec<Value>> {
+    async fn query_internal(namespace: &Namespace, conn: &dyn Queryable, model: &Model, value: &Value, dialect: SQLDialect, additional_where: Option<String>, additional_left_join: Option<String>, join_table_results: Option<Vec<String>>, force_negative_take: bool, additional_distinct: Option<Vec<String>>, path: KeyPath) -> teo_result::Result<Vec<Value>> {
         let _select = value.get("select");
         let include = value.get("include");
         let original_distinct = value.get("distinct").map(|v| if v.as_array().unwrap().is_empty() { None } else { Some(v.as_array().unwrap()) }).flatten();
@@ -317,11 +317,11 @@ impl Execution {
         Ok(results)
     }
 
-    pub(crate) async fn query(namespace: &Namespace, conn: &dyn Queryable, model: &Model, finder: &Value, dialect: SQLDialect, path: KeyPath) -> teo_runtime::path::Result<Vec<Value>> {
+    pub(crate) async fn query(namespace: &Namespace, conn: &dyn Queryable, model: &Model, finder: &Value, dialect: SQLDialect, path: KeyPath) -> teo_result::Result<Vec<Value>> {
        Self::query_internal(namespace, conn, model, finder, dialect, None, None, None, false, None, path).await
     }
 
-    pub(crate) async fn query_aggregate(namespace: &Namespace, conn: &dyn Queryable, model: &Model, finder: &Value, dialect: SQLDialect, path: KeyPath) -> teo_runtime::path::Result<Value> {
+    pub(crate) async fn query_aggregate(namespace: &Namespace, conn: &dyn Queryable, model: &Model, finder: &Value, dialect: SQLDialect, path: KeyPath) -> teo_result::Result<Value> {
         let stmt = Query::build_for_aggregate(namespace, model, finder, dialect)?;
         match conn.query(QuaintQuery::from(&*stmt)).await {
             Ok(result_set) => {
@@ -335,7 +335,7 @@ impl Execution {
         }
     }
 
-    pub(crate) async fn query_group_by(namespace: &Namespace, conn: &dyn Queryable, model: &Model, finder: &Value, dialect: SQLDialect, path: KeyPath) -> teo_runtime::path::Result<Vec<Value>> {
+    pub(crate) async fn query_group_by(namespace: &Namespace, conn: &dyn Queryable, model: &Model, finder: &Value, dialect: SQLDialect, path: KeyPath) -> teo_result::Result<Vec<Value>> {
         let stmt = Query::build_for_group_by(namespace, model, finder, dialect)?;
         let rows = match conn.query(QuaintQuery::from(stmt)).await {
             Ok(rows) => rows,
@@ -349,7 +349,7 @@ impl Execution {
         }).collect::<Vec<Value>>())
     }
 
-    pub(crate) async fn query_count(namespace: &Namespace, conn: &dyn Queryable, model: &Model, finder: &Value, dialect: SQLDialect, path: KeyPath) -> teo_runtime::path::Result<Value> {
+    pub(crate) async fn query_count(namespace: &Namespace, conn: &dyn Queryable, model: &Model, finder: &Value, dialect: SQLDialect, path: KeyPath) -> teo_result::Result<Value> {
         if finder.get("select").is_some() {
             Self::query_count_fields(namespace, conn, model, finder, dialect, path).await
         } else {
@@ -358,7 +358,7 @@ impl Execution {
         }
     }
 
-    pub(crate) async fn query_count_objects(namespace: &Namespace, conn: &dyn Queryable, model: &Model, finder: &Value, dialect: SQLDialect, path: KeyPath) -> teo_runtime::path::Result<usize> {
+    pub(crate) async fn query_count_objects(namespace: &Namespace, conn: &dyn Queryable, model: &Model, finder: &Value, dialect: SQLDialect, path: KeyPath) -> teo_result::Result<usize> {
         let stmt = Query::build_for_count(namespace, model, finder, dialect, None, None, None, false)?;
         match conn.query(QuaintQuery::from(stmt)).await {
             Ok(result) => {
@@ -372,7 +372,7 @@ impl Execution {
         }
     }
 
-    pub(crate) async fn query_count_fields(namespace: &Namespace, conn: &dyn Queryable, model: &Model, finder: &Value, dialect: SQLDialect, path: KeyPath) -> teo_runtime::path::Result<Value> {
+    pub(crate) async fn query_count_fields(namespace: &Namespace, conn: &dyn Queryable, model: &Model, finder: &Value, dialect: SQLDialect, path: KeyPath) -> teo_result::Result<Value> {
         let new_finder = Value::Dictionary(finder.as_dictionary().unwrap().iter().map(|(k, v)| {
             if k.as_str() == "select" {
                 ("_count".to_owned(), v.clone())
