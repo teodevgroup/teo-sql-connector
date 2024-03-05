@@ -265,6 +265,7 @@ impl SQLMigration {
     async fn create_table(dialect: SQLDialect, conn: &dyn Queryable, model: &Model) {
         // create table
         let stmt = SQLCreateTableStatement::from(model).to_string(dialect);
+        println!("see stmt: {}", stmt);
         conn.execute(Query::from(stmt)).await.unwrap();
         // create indices
         for index in model.indexes() {
