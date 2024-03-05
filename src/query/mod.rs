@@ -378,8 +378,8 @@ impl Query {
         }
         if let Some(by) = map.get("by") {
             for k in by.as_array().unwrap() {
-                let field_name = k.as_str().unwrap();
-                results.push(model.field(field_name).unwrap().column_name().to_string());
+                let field_name = k.as_enum_variant().unwrap();
+                results.push(model.field(field_name.value.as_str()).unwrap().column_name().to_string());
             }
         }
         Ok(format!("SELECT {} FROM ({}) AS _", results.join(","), Self::build(namespace, model, value, dialect, None, None, None, false)?))
