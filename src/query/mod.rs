@@ -7,7 +7,7 @@ use once_cell::sync::Lazy;
 use teo_parser::r#type::Type;
 use teo_result::{Error, Result};
 use crate::schema::dialect::SQLDialect;
-use crate::schema::value::encode::{IfIMode, SQLEscape, ToLike, ToSQLString, ToWrapped, ValueToSQLString, WrapInArray};
+use crate::schema::value::encode::{IfIMode, SQLEscape, ToLike, ToSQLString, ToWrapped, ValueToSQLString, WrapInArray, ToSQLInputWithoutQuotes};
 use crate::stmts::select::r#where::{ToWrappedSQLString, WhereClause};
 use crate::stmts::select::r#where::WhereClause::{And, Not};
 use crate::stmts::SQL;
@@ -99,15 +99,15 @@ impl Query {
                     }
                     "contains" => {
                         let i_mode = Input::has_i_mode(map);
-                        result.push(Self::where_item(&column_name.to_i_mode(i_mode), "LIKE", &value.to_sql_string(r#type, false, dialect).to_like(true, true).to_i_mode(i_mode)));
+                        result.push(Self::where_item(&column_name.to_i_mode(i_mode), "LIKE", &value.as_str().unwrap().to_sql_input_without_quotes(dialect).to_like(true, true).to_i_mode(i_mode)));
                     }
                     "startsWith" => {
                         let i_mode = Input::has_i_mode(map);
-                        result.push(Self::where_item(&column_name.to_i_mode(i_mode), "LIKE", &value.to_sql_string(r#type, false, dialect).to_like(false, true).to_i_mode(i_mode)));
+                        result.push(Self::where_item(&column_name.to_i_mode(i_mode), "LIKE", &value.as_str().unwrap().to_sql_input_without_quotes(dialect).to_like(false, true).to_i_mode(i_mode)));
                     }
                     "endsWith" => {
                         let i_mode = Input::has_i_mode(map);
-                        result.push(Self::where_item(&column_name.to_i_mode(i_mode), "LIKE", &value.to_sql_string(r#type, false, dialect).to_like(true, false).to_i_mode(i_mode)));
+                        result.push(Self::where_item(&column_name.to_i_mode(i_mode), "LIKE", &value.as_str().unwrap().to_sql_input_without_quotes(dialect).to_like(true, false).to_i_mode(i_mode)));
                     }
                     "matches" => {
                         let i_mode = Input::has_i_mode(map);
@@ -410,7 +410,7 @@ impl Query {
             false
         };
         let table_name = if additional_left_join.is_some() {
-            (model.table_name.to_string().escape(dialect) + " AS t")
+            model.table_name.to_string().escape(dialect) + " AS t"
         } else {
             model.table_name.to_string().escape(dialect)
         };

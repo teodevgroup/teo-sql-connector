@@ -174,8 +174,35 @@ pub trait ToSQLInput {
     fn to_sql_input(&self) -> String;
 }
 
+pub trait ToSQLInputWithoutQuotes {
+    fn to_sql_input_without_quotes(&self, dialect: SQLDialect) -> String;
+}
+
 pub trait ToSQLInputDialect {
     fn to_sql_input(&self, dialect: SQLDialect) -> String;
+}
+
+impl ToSQLInputWithoutQuotes for String {
+    fn to_sql_input_without_quotes(&self, dialect: SQLDialect) -> String {
+        self.as_str().to_sql_input_without_quotes(dialect)
+    }
+}
+
+impl ToSQLInputWithoutQuotes for &str {
+    fn to_sql_input_without_quotes(&self, dialect: SQLDialect) -> String {
+        let mut result = String::with_capacity(self.len());
+        for ch in self.chars() {
+            match ch {
+                '\'' => if dialect.is_mysql() {
+                    result.push_str("\\'");
+                } else {
+                    result.push_str("''");
+                },
+                _ => result.push(ch)
+            }
+        }
+        result
+    }
 }
 
 impl ToSQLInputDialect for String {
@@ -288,15 +315,15 @@ pub trait ToLike {
 impl ToLike for &str {
     fn to_like(&self, left: bool, right: bool) -> String {
         let mut retval = "".to_owned();
-        retval.push(self.chars().nth(0).unwrap());
+        retval.push('\'');
         if left {
             retval.push('%');
         }
-        retval += &self[1..self.len() - 1];
+        retval.push_str(self);
         if right {
             retval.push('%');
         }
-        retval.push(self.chars().nth(self.len() - 1).unwrap());
+        retval.push('\'');
         retval
     }
 }
