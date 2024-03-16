@@ -42,7 +42,11 @@ impl IndexExt for teo_runtime::model::Index {
         if self.r#type.is_primary() {
             Cow::Owned(self.normalize_name(table_name, dialect))
         } else {
-            Cow::Borrowed(self.name.as_str())
+            if dialect.is_sqlite() {
+                Cow::Owned(format!("{}_{}", table_name, self.name()))
+            } else {
+                Cow::Borrowed(self.name.as_str())
+            }
         }
     }
 
