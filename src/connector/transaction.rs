@@ -174,7 +174,7 @@ impl SQLTransaction {
         }
         let result = Execution::query(object.namespace(), self.queryable(), model, &teon!({"where": identifier, "take": 1i64}), self.dialect(), path.clone()).await?;
         if result.is_empty() {
-            Err(error_ext::not_found(path.clone()))
+            Err(Error::not_found_pathed(path.clone(), "not found"))
         } else {
             object.set_from_database_result_value(result.get(0).unwrap(), None, None);
             Ok(())
