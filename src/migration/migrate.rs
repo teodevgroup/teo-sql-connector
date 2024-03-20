@@ -20,7 +20,7 @@ use teo_runtime::connection::transaction::Transaction;
 use teo_runtime::sort::Sort;
 use teo_runtime::model::{Index, index::Item};
 use teo_runtime::index::Type;
-use teo_teon::value::Value;
+use teo_runtime::value::Value;
 use teo_result::{Result};
 use crate::exts::database_type::DatabaseTypeToSQLString;
 use crate::exts::index::IndexExt;

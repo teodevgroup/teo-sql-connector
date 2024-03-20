@@ -2,9 +2,8 @@ use bigdecimal::BigDecimal;
 use chrono::{NaiveDate, Utc, DateTime, SecondsFormat};
 use itertools::Itertools;
 use teo_parser::r#type::Type;
-use teo_teon::types::enum_variant::EnumVariant;
+use teo_runtime::value::Value;
 use crate::schema::dialect::SQLDialect;
-use teo_teon::Value;
 
 pub trait ToSQLString {
     fn to_string(&self, dialect: SQLDialect) -> String;
@@ -122,7 +121,6 @@ impl ToSQLString for &Value {
             Value::DateTime(d) => d.to_sql_input(dialect),
             Value::Decimal(d) => d.to_sql_input(dialect),
             Value::Array(values) => format!("array[{}]", values.iter().map(|v| ToSQLString::to_string(&v, dialect)).join(",")),
-            Value::EnumVariant(e) => e.to_sql_input(dialect),
             _ => panic!("unhandled value: {:?}", self),
         }
     }
@@ -380,12 +378,5 @@ impl SQLEscape for String {
             SQLDialect::PostgreSQL => format!("\"{}\"", self),
             _ => format!("`{}`", self),
         }
-    }
-}
-
-impl ToSQLInputDialect for EnumVariant {
-
-    fn to_sql_input(&self, dialect: SQLDialect) -> String {
-        self.value.as_str().to_sql_input(dialect)
     }
 }

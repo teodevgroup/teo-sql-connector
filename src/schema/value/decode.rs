@@ -1,5 +1,5 @@
 use crate::schema::dialect::SQLDialect;
-use teo_teon::value::Value;
+use teo_runtime::value::Value;
 use chrono::{NaiveDate, DateTime, Utc};
 use indexmap::IndexMap;
 use quaint_forked::prelude::{ResultRow, ResultSet, Value as QuaintValue};

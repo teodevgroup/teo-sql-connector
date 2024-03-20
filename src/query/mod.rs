@@ -15,7 +15,7 @@ use teo_runtime::model::{Model, object::Object, object::input::Input};
 use teo_runtime::model::field::column_named::ColumnNamed;
 use teo_runtime::model::field::typed::Typed;
 use teo_runtime::namespace::Namespace;
-use teo_teon::Value;
+use teo_runtime::value::Value;
 
 pub(crate) struct Query { }
 
@@ -329,7 +329,7 @@ impl Query {
         let aggregate = Self::build_for_aggregate(namespace, model, value, dialect)?;
         let map = value.as_dictionary().unwrap();
         let by = map.get("by").unwrap().as_array().unwrap().iter().map(|v| {
-            let field_name = v.as_enum_variant().unwrap().value.as_str();
+            let field_name = v.as_str().unwrap();
             model.field(field_name).unwrap().column_name()
         }).collect::<Vec<&str>>().iter().map(|o| format!("{}{}{}", dialect.escape(), o, dialect.escape())).join(",");
         let having = if let Some(having) = map.get("having") {
@@ -378,8 +378,8 @@ impl Query {
         }
         if let Some(by) = map.get("by") {
             for k in by.as_array().unwrap() {
-                let field_name = k.as_enum_variant().unwrap();
-                results.push(format!("{}{}{}", dialect.escape(), model.field(field_name.value.as_str()).unwrap().column_name(), dialect.escape()));
+                let field_name = k.as_str().unwrap();
+                results.push(format!("{}{}{}", dialect.escape(), model.field(field_name).unwrap().column_name(), dialect.escape()));
             }
         }
         Ok(format!("SELECT {} FROM ({}) AS _", results.join(","), Self::build(namespace, model, value, dialect, None, None, None, false)?))

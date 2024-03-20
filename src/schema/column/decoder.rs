@@ -12,7 +12,7 @@ use teo_runtime::model::{Model, Field, Index, Property};
 use teo_runtime::model::field::column_named::ColumnNamed;
 use teo_runtime::model::field::indexable::Indexable;
 use teo_runtime::model::field::is_optional::IsOptional;
-use teo_teon::Value;
+use teo_runtime::value::Value;
 
 #[derive(Debug)]
 pub(crate) enum ColumnManipulation<'a> {
