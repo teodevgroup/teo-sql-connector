@@ -2,6 +2,7 @@ use std::fmt::{Debug, Formatter};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use async_trait::async_trait;
+use indexmap::indexmap;
 use itertools::Itertools;
 use quaint_forked::{prelude::*, ast::Query as QuaintQuery};
 use quaint_forked::error::DatabaseConstraint;
@@ -30,7 +31,7 @@ use teo_runtime::connection::transaction::Transaction;
 use teo_runtime::model::field::typed::Typed;
 use teo_runtime::error_ext;
 use teo_runtime::request::Ctx;
-use key_path::KeyPath;
+use key_path::{KeyPath, path};
 
 #[derive(Clone)]
 pub struct SQLTransaction {
@@ -296,6 +297,25 @@ impl Transaction for SQLTransaction {
         Execution::query_group_by(transaction_ctx.namespace(), self.queryable(), model, finder, self.dialect(), path).await
     }
 
+    async fn sql(&self, model: &'static Model, sql: &str, transaction_ctx: transaction::Ctx) -> Result<Vec<Value>> {
+        let rows = match self.conn.query(QuaintQuery::from(sql)).await {
+            Ok(rows) => rows,
+            Err(err) => {
+                return Err(error_ext::unknown_database_find_error(path![], format!("{:?}", err)));
+            }
+        };
+        let mut result = vec![];
+        rows.into_iter().for_each(|v| {
+            let mut map = indexmap! {};
+            v.columns.iter().for_each(|c| {
+                let sql_value = v.get(c).unwrap();
+                map.insert(c.to_string(), sql_value_to_teon_value(sql_value));
+            });
+            result.push(Value::Dictionary(map));
+        });
+        Ok(result)
+    }
+
     fn is_committed(&self) -> bool {
         self.committed.load(Ordering::SeqCst)
     }
@@ -333,4 +353,36 @@ impl Transaction for SQLTransaction {
             committed: Arc::new(AtomicBool::new(false)),
         }))
     }
+}
+
+fn sql_value_to_teon_value(value: &quaint_forked::Value) -> Value {
+    if value.is_null() {
+        return Value::Null;
+    } else if value.is_bool() {
+        return Value::Bool(value.as_bool().unwrap());
+    } else if value.is_date() {
+        return Value::Date(value.as_date().unwrap());
+    } else if value.is_datetime() {
+        return Value::DateTime(value.as_datetime().unwrap());
+    } else if value.is_i32() {
+        return Value::Int(value.as_i32().unwrap());
+    } else if value.is_i64() {
+        return Value::Int64(value.as_i64().unwrap());
+    } else if value.is_integer() {
+        return Value::Int64(value.as_integer().unwrap());
+    } else if value.is_numeric() {
+        return Value::Decimal(value.as_numeric().unwrap().clone());
+    } else if value.is_text() {
+        return Value::String(value.as_str().unwrap().to_owned());
+    } else if value.as_f32().is_some() {
+        return Value::Float32(value.as_f32().unwrap());
+    } else if value.as_f64().is_some() {
+        return Value::Float(value.as_f64().unwrap());
+    } else if value.is_array() {
+        let array = value.as_array().unwrap();
+        return Value::Array(array.iter().map(sql_value_to_teon_value).collect());
+    } else if value.is_json() {
+        return Value::from(value.as_json().unwrap());
+    }
+    return Value::Null
 }
