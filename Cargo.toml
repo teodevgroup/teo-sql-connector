@@ -1,6 +1,6 @@
 [package]
 name = "teo-sql-connector"
-version = "0.2.24"
+version = "0.2.27"
 edition = "2021"
 description = "SQL connector for Teo"
 license = "Apache-2.0"
@@ -13,7 +13,7 @@ repository = "https://github.com/teocloud/teo-sql-connector"
 [dependencies]
 teo-result = { version = "0.2.23", path = "../teo-result" }
 teo-parser = { version = "0.2.24", path = "../teo-parser" }
-teo-runtime = { version = "0.2.24", path = "../teo-runtime" }
+teo-runtime = { version = "0.2.25", path = "../teo-runtime" }
 quaint-forked = { version = "0.1.3-alpha.6", features = [ "all" ] }
 #unicode-segmentation = "1.11.0"
 whoami = { version = "1.4.1" }

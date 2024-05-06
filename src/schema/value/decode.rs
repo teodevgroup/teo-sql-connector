@@ -1,3 +1,5 @@
+use std::str::FromStr;
+use bigdecimal::BigDecimal;
 use crate::schema::dialect::SQLDialect;
 use teo_runtime::value::Value;
 use chrono::{NaiveDate, DateTime, Utc};
@@ -212,7 +214,17 @@ impl RowDecoder {
         if r#type.is_decimal() {
             if let Some(val) = value.as_numeric() {
                 return Value::Decimal(val.clone());
-            } else {
+            } else if let Some(val) = value.as_str() {
+                return Value::Decimal(BigDecimal::from_str(val).unwrap());
+            } else if let Some(val) = value.as_f64() {
+                return Value::Decimal(BigDecimal::from_str(&val.to_string()).unwrap())
+            } else if let Some(val) = value.as_f32() {
+                return Value::Decimal(BigDecimal::from_str(&val.to_string()).unwrap())
+            } else if let Some(val) = value.as_i32() {
+                return Value::Decimal(BigDecimal::from_str(&val.to_string()).unwrap())
+            } else if let Some(val) = value.as_i64() {
+                return Value::Decimal(BigDecimal::from_str(&val.to_string()).unwrap())
+            } {
                 return Value::Null;
             }
         }
