@@ -67,6 +67,9 @@ impl RowDecoder {
                     None => Value::Null,
                 }
             }
+            // quaint_forked::Value::Array(values) => {
+            //
+            // }
             _ => unreachable!()
         }
     }
