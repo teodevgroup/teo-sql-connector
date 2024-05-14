@@ -139,6 +139,8 @@ fn field_type_to_psql(field_type: &Type) -> &'static str {
         Type::Bool => "boolean",
         Type::Date => "date",
         Type::DateTime => "timestamp",
+        Type::EnumVariant(_) => "text",
+        Type::File => "text",
         _ => unreachable!(),
     }
 }
