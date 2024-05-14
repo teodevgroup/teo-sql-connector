@@ -7,9 +7,10 @@ pub struct SQLAlterTableDropColumnStatement {
 }
 
 impl ToSQLString for SQLAlterTableDropColumnStatement {
-    fn to_string(&self, _dialect: SQLDialect) -> String {
+    fn to_string(&self, dialect: SQLDialect) -> String {
         let table = &self.table;
         let column = &self.column;
-        format!("ALTER TABLE `{table}` DROP COLUMN `{column}`")
+        let escape = dialect.escape();
+        format!("ALTER TABLE {escape}{table}{escape} DROP COLUMN {escape}{column}{escape}")
     }
 }

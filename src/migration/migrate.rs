@@ -1,6 +1,5 @@
 use std::collections::HashSet;
 use std::fs;
-use std::sync::Arc;
 use itertools::Itertools;
 use maplit::hashset;
 use quaint_forked::pooled::{Quaint};

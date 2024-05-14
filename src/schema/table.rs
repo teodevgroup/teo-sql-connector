@@ -7,7 +7,9 @@ impl From<&Model> for SQLCreateTableStatement {
         let mut stmt = SQL::create().table(&model.table_name);
         stmt.if_not_exists();
         for field in model.fields() {
-            stmt.column(field.into());
+            if !field.r#virtual {
+                stmt.column(field.into());
+            }
         }
         for property in model.properties() {
             if property.cached {
