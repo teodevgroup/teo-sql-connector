@@ -34,7 +34,7 @@ impl Execution {
     pub(crate) fn row_to_value(namespace: &Namespace, model: &Model, row: &ResultRow, columns: &Vec<String>, dialect: SQLDialect) -> Value {
         Value::Dictionary(columns.iter().filter_map(|column_name| {
             if let Some(field) = model.field_with_column_name(column_name) {
-                if field.auto_increment && dialect == SQLDialect::PostgreSQL {
+                if field.auto_increment() && dialect == SQLDialect::PostgreSQL {
                     Some((field.name().to_owned(), RowDecoder::decode_serial(field.is_optional(), row, column_name)))
                 } else {
                     Some((field.name().to_owned(), RowDecoder::decode(field.r#type(), field.is_optional(), row, column_name, dialect)))
@@ -171,12 +171,12 @@ impl Execution {
                         // in a (?,?,?,?,?) format
                         let field_name = fields.get(0).unwrap();
                         results.iter().map(|v| {
-                            ToSQLString::to_string(&v.as_dictionary().unwrap().get(*field_name).unwrap(), dialect)
+                            ToSQLString::to_string(&v.as_dictionary().unwrap().get(field_name).unwrap(), dialect)
                         }).collect::<Vec<String>>().join(",").to_wrapped()
                     } else {
                         // in a (VALUES (?,?),(?,?)) format
                         format!("(VALUES {})", results.iter().map(|o| {
-                            fields.iter().map(|f| ToSQLString::to_string(&o.as_dictionary().unwrap().get(*f).unwrap(), dialect)).collect::<Vec<String>>().join(",").to_wrapped()
+                            fields.iter().map(|f| ToSQLString::to_string(&o.as_dictionary().unwrap().get(f).unwrap(), dialect)).collect::<Vec<String>>().join(",").to_wrapped()
                         }).collect::<Vec<String>>().join(","))
                     };
                     let where_addition = Query::where_item(&names, "IN", &values);
@@ -190,7 +190,7 @@ impl Execution {
                     for result in results.iter_mut() {
                         let mut skipped = 0;
                         let mut taken = 0;
-                        if relation.is_vec {
+                        if relation.is_vec() {
                             result.as_dictionary_mut().unwrap().insert(relation.name().to_owned(), Value::Array(vec![]));
                         }
                         for included_value in included_values.iter() {
@@ -235,7 +235,7 @@ impl Execution {
                         join_parts.push(format!("t.{} = j.{}", reference_column_name.escape(dialect), field_column_name.escape(dialect)));
                     }
                     let joins = join_parts.join(" AND ");
-                    let left_join = format!("{} AS j ON {}", &through_model.table_name.escape(dialect), joins);
+                    let left_join = format!("{} AS j ON {}", &through_model.table_name().escape(dialect), joins);
                     let (through_table, through_relation) = namespace.through_relation(relation);
                     let names = if through_relation.len() == 1 { // todo: column name
                         format!("j.{}", through_table.field(through_relation.fields().get(0).unwrap()).unwrap().column_name().escape(dialect))
@@ -246,11 +246,11 @@ impl Execution {
                         let references = through_relation.references();
                         let field_name = references.get(0).unwrap();
                         results.iter().map(|v| {
-                            ToSQLString::to_string(&v.as_dictionary().unwrap().get(*field_name).unwrap(), dialect)
+                            ToSQLString::to_string(&v.as_dictionary().unwrap().get(field_name).unwrap(), dialect)
                         }).collect::<Vec<String>>().join(",").to_wrapped()
                     } else { // (VALUES (?,?),(?,?)) format
                         let pairs = results.iter().map(|o| {
-                            through_relation.references().iter().map(|f| ToSQLString::to_string(&o.as_dictionary().unwrap().get(*f).unwrap(), dialect)).collect::<Vec<String>>().join(",").to_wrapped()
+                            through_relation.references().iter().map(|f| ToSQLString::to_string(&o.as_dictionary().unwrap().get(f).unwrap(), dialect)).collect::<Vec<String>>().join(",").to_wrapped()
                         }).collect::<Vec<String>>().join(",");
                         format!("(VALUES {})", pairs)
                     };

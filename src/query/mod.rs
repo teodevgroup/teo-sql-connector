@@ -188,7 +188,7 @@ impl Query {
             } else {
                 if let Some(field) = model.field(key) {
                     let column_name = field.column_name();
-                    let optional = field.optionality.is_any_optional();
+                    let optional = field.optionality().is_any_optional();
                     let entry_column_name = if let Some(alias) = table_alias {
                         let _a = format!("{}.{}", alias, column_name);
                         Cow::Owned(format!("{}.{}", alias, column_name))
@@ -217,13 +217,13 @@ impl Query {
                     for (key, value) in value.as_dictionary().unwrap() {
                         let escape = dialect.escape();
                         let from = if !has_join_table {
-                            format!("{escape}{}{escape} AS t", &model.table_name)
+                            format!("{escape}{}{escape} AS t", model.table_name())
                         } else {
                             let through_table_name = namespace.model_at_path(&relation.through_path().unwrap()).unwrap().table_name();
                             format!("{escape}{}{escape} AS t", through_table_name)
                         };
                         let opposite_model = namespace.model_at_path(&relation.model_path()).unwrap();
-                        let relation_table_name = &opposite_model.table_name;
+                        let relation_table_name = opposite_model.table_name();
                         let on = if has_join_table {
                             let (_, opposite_relation) = namespace.opposite_relation(relation);
                             let opposite_relation = opposite_relation.unwrap();
@@ -410,13 +410,13 @@ impl Query {
             false
         };
         let table_name = if additional_left_join.is_some() {
-            model.table_name.to_string().escape(dialect) + " AS t"
+            model.table_name().to_string().escape(dialect) + " AS t"
         } else {
-            model.table_name.to_string().escape(dialect)
+            model.table_name().to_string().escape(dialect)
         };
         let mut columns: Vec<String> = vec![];
         if additional_left_join.is_some() {
-            columns = model.cache.save_keys.iter().map(|k| format!("t.{} AS {}", k.escape(dialect), k.escape(dialect))).collect::<Vec<String>>();
+            columns = model.cache().save_keys.iter().map(|k| format!("t.{} AS {}", k.escape(dialect), k.escape(dialect))).collect::<Vec<String>>();
         }
         if let Some(join_table_results) = join_table_results {
             for result_key in join_table_results {
@@ -500,7 +500,7 @@ impl Query {
 
     fn default_desc_order(model: &Model) -> Value {
         let mut vec: Vec<Value> = vec![];
-        for item in &model.primary_index().unwrap().items {
+        for item in model.primary_index().unwrap().items() {
             vec.push(Value::Dictionary(indexmap!{item.field.clone() => Value::String("desc".to_string())}));
         }
         Value::Array(vec)

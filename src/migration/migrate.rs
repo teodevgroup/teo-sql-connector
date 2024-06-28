@@ -18,8 +18,7 @@ use teo_runtime::connection::connection::Connection;
 use teo_runtime::connection::transaction::Transaction;
 use teo_runtime::sort::Sort;
 use teo_runtime::model::{Index, index::Item};
-use teo_runtime::index::Type;
-use teo_runtime::value::Value;
+use teo_runtime::model::index::Type;
 use teo_result::{Result};
 use crate::exts::database_type::DatabaseTypeToSQLString;
 use crate::exts::index::IndexExt;
@@ -153,8 +152,8 @@ impl SQLMigration {
         let mut db_tables = Self::get_db_user_tables(dialect, conn).await;
         // compare each table and do migration
         for model in models {
-            let table_name = &model.table_name;
-            if let Some(migration) = Some(&model.migration) {
+            let table_name = model.table_name();
+            if let Some(migration) = Some(model.migration()) {
                 if !db_tables.iter().any(|x| x == table_name) {
                     if let Some(old_name) = &migration.renamed {
                         for old_name in old_name {
@@ -188,7 +187,7 @@ impl SQLMigration {
                 }
                 let table_has_records = Self::table_has_records(dialect, conn, table_name).await;
                 let db_indices = Self::db_indices(dialect, conn, model).await;
-                let model_indices = Self::normalized_model_indices(model.indexes(), dialect, table_name);
+                let model_indices = Self::normalized_model_indices(model.indexes().values().collect(), dialect, table_name);
                 // here update columns and indices
                 let manipulations = ColumnDecoder::manipulations(&db_columns, &model_columns, &db_indices, &model_indices, model);
                 if table_has_records && manipulations.iter().find(|m| m.is_add_column_non_null()).is_some() && model.allows_drop_when_migrate() {
@@ -266,10 +265,10 @@ impl SQLMigration {
         let stmt = SQLCreateTableStatement::from(model).to_string(dialect);
         conn.execute(Query::from(stmt)).await.unwrap();
         // create indices
-        for index in model.indexes() {
+        for (_name, index) in model.indexes() {
             // primary is created when creating table
             if index.r#type().is_primary() { continue }
-            let stmt = index.to_sql_create(dialect, &model.table_name);
+            let stmt = index.to_sql_create(dialect, model.table_name());
             conn.execute(Query::from(stmt)).await.unwrap();
         }
     }
@@ -320,7 +319,7 @@ impl SQLMigration {
     }
 
     async fn mysql_db_indices(conn: &dyn Queryable, model: &Model) -> HashSet<Index> {
-        let table_name = &model.table_name;
+        let table_name = model.table_name();
         let sql = format!("SHOW INDEX FROM `{}`", table_name);
         let result_set = conn.query(Query::from(sql)).await.unwrap();
         let mut indices = vec![];
@@ -346,7 +345,7 @@ impl SQLMigration {
     }
 
     async fn psql_db_indices(conn: &dyn Queryable, model: &Model) -> HashSet<Index> {
-        let table_name = &model.table_name;
+        let table_name = model.table_name();
         let sql = format!(r#"SELECT     irel.relname                           AS index_name,
            a.attname                              AS column_name,
            i.indisunique                          AS is_unique,
@@ -406,7 +405,7 @@ GROUP BY   tnsp.nspname,
     }
 
     async fn sqlite_db_indices(conn: &dyn Queryable, model: &Model) -> HashSet<Index> {
-        let table_name = &model.table_name;
+        let table_name = model.table_name();
         let sql = format!(r#"SELECT
     il.name as index_name,
     ii.name as column_name,

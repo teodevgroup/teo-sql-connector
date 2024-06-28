@@ -1,5 +1,5 @@
 use std::borrow::Cow;
-use teo_runtime::index::Type;
+use teo_runtime::model::index::Type;
 use teo_runtime::model::index::Item;
 use crate::exts::sort::SortExt;
 use crate::schema::dialect::SQLDialect;
@@ -30,32 +30,27 @@ pub trait IndexExt {
 impl IndexExt for teo_runtime::model::Index {
 
     fn psql_primary_to_unique(&self, table_name: &str) -> Self {
-        Self {
-            r#type: Type::Unique,
-            name: format!("{table_name}_{}_pkey", self.joined_names()),
-            items: self.items.clone(),
-            cache: self.cache.clone(),
-        }
+        Self::new(Type::Unique, format!("{table_name}_{}_pkey", self.joined_names()), self.items().clone())
     }
 
     fn sql_name(&self, table_name: &str, dialect: SQLDialect) -> Cow<str> {
-        if self.r#type.is_primary() {
+        if self.r#type().is_primary() {
             Cow::Owned(self.normalize_name(table_name, dialect))
         } else {
             if dialect.is_sqlite() || (dialect.is_postgres() && !self.name().ends_with("pkey")) {
                 Cow::Owned(format!("{}_{}", table_name, self.name()))
             } else {
-                Cow::Borrowed(self.name.as_str())
+                Cow::Borrowed(self.name())
             }
         }
     }
 
     fn joined_names(&self) -> String {
-        self.cache.keys.join("_")
+        self.keys().join("_")
     }
 
     fn psql_suffix(&self) -> &str {
-        if self.r#type.is_primary() {
+        if self.r#type().is_primary() {
             "pkey"
         } else {
             "idx"
@@ -63,7 +58,7 @@ impl IndexExt for teo_runtime::model::Index {
     }
 
     fn normalize_name_psql(&self, table_name: &str) -> String {
-        if self.r#type.is_primary() {
+        if self.r#type().is_primary() {
             format!("{table_name}_{}", self.psql_suffix())
         } else {
             format!("{table_name}_{}_{}", self.joined_names(), self.psql_suffix())
@@ -75,7 +70,7 @@ impl IndexExt for teo_runtime::model::Index {
     }
 
     fn normalize_name(&self, table_name: &str, dialect: SQLDialect) -> String {
-        match self.r#type {
+        match self.r#type() {
             Type::Primary => match dialect {
                 SQLDialect::MySQL => "PRIMARY".to_owned(),
                 SQLDialect::SQLite => format!("sqlite_autoindex_{}_1", table_name),
@@ -105,7 +100,7 @@ impl IndexExt for teo_runtime::model::Index {
         let index_name_cow = self.sql_name(table_name, dialect);
         let index_name = index_name_cow.as_ref();
         let unique = if self.r#type().is_unique() { "UNIQUE " } else { "" };
-        let fields: Vec<String> = self.items.iter().map(|item| {
+        let fields: Vec<String> = self.items().iter().map(|item| {
             Self::sql_format_item(dialect, item, false)
         }).collect();
         format!("CREATE {unique}INDEX {escape}{index_name}{escape} ON {escape}{table_name}{escape}({})", fields.join(","))

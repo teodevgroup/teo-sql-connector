@@ -12,6 +12,7 @@ use teo_runtime::model::{Model, Field, Index, Property};
 use teo_runtime::model::field::column_named::ColumnNamed;
 use teo_runtime::model::field::indexable::Indexable;
 use teo_runtime::model::field::is_optional::IsOptional;
+use teo_runtime::traits::named::Named;
 use teo_runtime::value::Value;
 
 #[derive(Debug)]
@@ -42,7 +43,7 @@ impl<'a> ColumnManipulation<'a> {
             ColumnManipulation::AddColumn(_, _) => -200,
             ColumnManipulation::CreateIndex(_) => -100,
             ColumnManipulation::DropIndex(_) => -100,
-            _ => self.get_field(model).map(|f| f.migration.as_ref().map(|m| m.priority.unwrap_or(0))).unwrap_or(Some(0)).unwrap_or(0)
+            _ => self.get_field(model).map(|f| f.migration().as_ref().map(|m| m.priority.unwrap_or(0))).unwrap_or(Some(0)).unwrap_or(0)
         }
     }
 
@@ -150,12 +151,12 @@ impl ColumnDecoder {
 
     pub(crate) fn decode_model_columns(model: &Model) -> HashSet<SQLColumn> {
         let mut result = hashset!{};
-        for field in model.fields() {
-            if field.r#virtual { continue }
+        for (_name, field) in model.fields() {
+            if field.r#virtual() { continue }
             result.insert(field.into());
         }
-        for property in model.properties() {
-            if property.cached {
+        for (_name, property) in model.properties() {
+            if property.cached() {
                 result.insert(property.into());
             }
         }
@@ -272,7 +273,7 @@ AND    i.indisprimary", table_name);
 
 impl From<&Field> for SQLColumn {
     fn from(field: &Field) -> Self {
-        SQLColumn::new(field.column_name().to_owned(), field.database_type.clone(), field.is_required(), field.auto_increment, None, field.index().is_some() && field.index().unwrap().r#type.is_primary())
+        SQLColumn::new(field.column_name().to_owned(), field.database_type().clone(), field.is_required(), field.auto_increment(), None, field.index().is_some() && field.index().unwrap().r#type().is_primary())
     }
 }
 
@@ -284,7 +285,7 @@ impl From<&Arc<Field>> for SQLColumn {
 
 impl From<&Property> for SQLColumn {
     fn from(property: &Property) -> Self {
-        SQLColumn::new(property.name.to_string(), property.database_type.clone(), property.is_required(), false, None, false)
+        SQLColumn::new(property.name().to_string(), property.database_type().clone(), property.is_required(), false, None, false)
     }
 }
 
