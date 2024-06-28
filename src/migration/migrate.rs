@@ -294,11 +294,9 @@ impl SQLMigration {
 
     fn normalized_model_indices(indices: Vec<&Index>, dialect: SQLDialect, table_name: &str) -> HashSet<Index> {
         let mut results: Vec<Index> = indices.iter().map(|index| {
-            let mut index: Index = (*index).clone();
             let sql_name_cow = index.sql_name(table_name, dialect);
             let sql_name = sql_name_cow.as_ref().to_owned();
-            index.name = sql_name;
-            index
+            Index::new(index.r#type(), sql_name, index.items().clone())
         }).collect();
         if dialect == SQLDialect::PostgreSQL {
             if let Some(primary) = results.iter().find(|r| r.r#type().is_primary()) {
@@ -329,8 +327,14 @@ impl SQLMigration {
             let order = Sort::from_mysql_str(row.get("Collation").unwrap().as_str().unwrap()).unwrap();
             if let Some(position) = indices.iter().position(|m: &Index| m.name() == &index_name) {
                 let model_index = indices.get_mut(position).unwrap();
-                let item = Item::new(column_name, order, None);
-                model_index.items.push(item);
+                let mut items = model_index.items().clone();
+                items.push(Item::new(column_name, order, None));
+                let new_model_index = Index::new(
+                    model_index.r#type(),
+                    model_index.name().to_string(),
+                    items
+                );
+                indices[position] = new_model_index;
             } else {
                 let is_unique = !row.get("Non_unique").unwrap().as_bool().unwrap();
                 let item = Item::new(column_name, order, None);
@@ -388,8 +392,14 @@ GROUP BY   tnsp.nspname,
             let order = Sort::from_str(row.get("order").unwrap().as_str().unwrap()).unwrap();
             if let Some(position) = indices.iter().position(|m: &Index| m.name() == index_name) {
                 let model_index = indices.get_mut(position).unwrap();
-                let item = Item::new(column_name, order, None);
-                model_index.items.push(item);
+                let mut items = model_index.items().clone();
+                items.push(Item::new(column_name, order, None));
+                let new_model_index = Index::new(
+                    model_index.r#type(),
+                    model_index.name().to_string(),
+                    items
+                );
+                indices[position] = new_model_index;
             } else {
                 let is_unique = row.get("is_unique").unwrap().as_bool().unwrap();
                 let is_primary = row.get("is_primary").unwrap().as_bool().unwrap();
@@ -440,7 +450,13 @@ ORDER BY 1,6"#, table_name);
             if let Some(position) = indices.iter().position(|m: &Index| m.name() == &index_name) {
                 let model_index = indices.get_mut(position).unwrap();
                 let item = Item::new(column_name, order, None);
-                model_index.items.push(item);
+                let mut items = model_index.items().clone();
+                items.push(item);
+                indices[position] = Index::new(
+                    model_index.r#type(),
+                    model_index.name().to_string(),
+                    model_index.items().clone()
+                );
             } else {
                 let is_unique = row.get("is_unique").unwrap().as_bool().unwrap();
                 let is_primary = row.get("is_primary").unwrap().as_bool().unwrap();
