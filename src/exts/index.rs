@@ -73,7 +73,8 @@ impl IndexExt for teo_runtime::model::Index {
         match self.r#type() {
             Type::Primary => match dialect {
                 SQLDialect::MySQL => "PRIMARY".to_owned(),
-                SQLDialect::SQLite => format!("teo_sqlite_autoindex_{}_1", table_name),
+                SQLDialect::SQLite => format!("teo_primary_sqlite_index_{}", table_name),
+                //SQLDialect::SQLite => format!("sqlite_autoindex_{}_1", table_name),
                 SQLDialect::PostgreSQL => self.normalize_name_psql(table_name),
                 _ => unreachable!()
             },

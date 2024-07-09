@@ -197,13 +197,16 @@ impl SQLMigration {
                     for m in manipulations.iter() {
                         match m {
                             ColumnManipulation::CreateIndex(index) => {
-                                let create = index.to_sql_create(dialect, table_name);
-                                conn.execute(Query::from(create)).await.unwrap();
+                                if !index.name().starts_with("teo_primary_sqlite_index") {
+                                    let create = index.to_sql_create(dialect, table_name);
+                                    conn.execute(Query::from(create)).await.unwrap();
+                                }
                             }
                             ColumnManipulation::DropIndex(index) => {
-                                println!("see this index {:?}", index);
-                                let drop = index.to_sql_drop(dialect, table_name);
-                                conn.execute(Query::from(drop)).await.unwrap();
+                                if !index.name().starts_with("teo_primary_sqlite_index") {
+                                    let drop = index.to_sql_drop(dialect, table_name);
+                                    conn.execute(Query::from(drop)).await.unwrap();
+                                }
                             }
                             ColumnManipulation::AddColumn(column, default) => {
                                 if column.not_null() && default.is_none() {
@@ -470,20 +473,20 @@ ORDER BY 1,6"#, table_name);
             }
         }
         let mut results: Vec<Index> = indices.into_iter().collect();
-        let includes_primary = results.iter().find(|r| {
-            r.name() == &format!("teo_sqlite_autoindex_{table_name}_1")
-        }).is_some();
-        if !includes_primary {
-            let sql = format!("SELECT * FROM pragma_table_info(\"{table_name}\") WHERE pk = 1");
-            let result_set = conn.query(Query::from(sql)).await.unwrap();
-            let row = result_set.into_single().unwrap();
-            let column_name = row.get("name").unwrap().to_string().unwrap();
-            let leaked = column_name;
-            let index = Index::new(Type::Primary, format!("teo_sqlite_autoindex_{table_name}_1"), vec![
-                Item::new(leaked, Sort::Asc, None)
-            ]);
-            results.push(index);
-        }
+        // let includes_primary = results.iter().find(|r| {
+        //     r.r#type() == Type::Primary
+        // }).is_some();
+        // if !includes_primary {
+        //     let sql = format!("SELECT * FROM pragma_table_info(\"{table_name}\") WHERE pk = 1");
+        //     let result_set = conn.query(Query::from(sql)).await.unwrap();
+        //     let row = result_set.into_single().unwrap();
+        //     let column_name = row.get("name").unwrap().to_string().unwrap();
+        //     let leaked = column_name;
+        //     let index = Index::new(Type::Primary, format!("sqlite_autoindex_{table_name}_1"), vec![
+        //         Item::new(leaked, Sort::Asc, None)
+        //     ]);
+        //     results.push(index);
+        // }
         results.into_iter().collect()
     }
 }
