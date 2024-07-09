@@ -72,7 +72,7 @@ fn postgresql_type_to_database_type(r#type: &str) -> PostgreSQLType {
     match lower_str {
         "integer" | "int4" => PostgreSQLType::Integer,
         "text" => PostgreSQLType::Text,
-        "timestamp with time zone" => PostgreSQLType::Timestamp(3, true),
+        "timestamp with time zone" | "timestamptz" => PostgreSQLType::Timestamp(3, true),
         "timestamp without time zone" | "timestamp" => PostgreSQLType::Timestamp(3, false),
         "boolean" | "bool" => PostgreSQLType::Boolean,
         "bigint" | "int8" => PostgreSQLType::BigInt,

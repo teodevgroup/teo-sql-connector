@@ -201,6 +201,7 @@ impl SQLMigration {
                                 conn.execute(Query::from(create)).await.unwrap();
                             }
                             ColumnManipulation::DropIndex(index) => {
+                                println!("see this index {:?}", index);
                                 let drop = index.to_sql_drop(dialect, table_name);
                                 conn.execute(Query::from(drop)).await.unwrap();
                             }
@@ -470,7 +471,7 @@ ORDER BY 1,6"#, table_name);
         }
         let mut results: Vec<Index> = indices.into_iter().collect();
         let includes_primary = results.iter().find(|r| {
-            r.r#type() == Type::Primary
+            r.name() == &format!("teo_sqlite_autoindex_{table_name}_1")
         }).is_some();
         if !includes_primary {
             let sql = format!("SELECT * FROM pragma_table_info(\"{table_name}\") WHERE pk = 1");
@@ -478,7 +479,7 @@ ORDER BY 1,6"#, table_name);
             let row = result_set.into_single().unwrap();
             let column_name = row.get("name").unwrap().to_string().unwrap();
             let leaked = column_name;
-            let index = Index::new(Type::Primary, format!("sqlite_autoindex_{table_name}_1"), vec![
+            let index = Index::new(Type::Primary, format!("teo_sqlite_autoindex_{table_name}_1"), vec![
                 Item::new(leaked, Sort::Asc, None)
             ]);
             results.push(index);
