@@ -14,7 +14,7 @@ repository = "https://github.com/teocloud/teo-sql-connector"
 teo-result = { version = "0.3.0-alpha.0", path = "../teo-result" }
 teo-parser = { version = "0.3.0-alpha.0", path = "../teo-parser" }
 teo-runtime = { version = "0.3.0-alpha.0", path = "../teo-runtime" }
-quaint-forked = { version = "0.1.3-alpha.6", features = [ "all" ] }
+quaint-forked = { version = "0.1.3-alpha.7", features = [ "all" ] }
 #unicode-segmentation = "1.11.0"
 whoami = { version = "1.4.1" }
 async-recursion = "1.0.5"
