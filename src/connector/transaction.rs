@@ -30,7 +30,7 @@ use teo_runtime::model::field::column_named::ColumnNamed;
 use teo_runtime::connection::transaction::Transaction;
 use teo_runtime::model::field::typed::Typed;
 use teo_runtime::error_ext;
-use teo_runtime::request::Ctx;
+use teo_runtime::request::Request;
 use key_path::{KeyPath, path};
 
 #[derive(Clone)]
@@ -264,8 +264,8 @@ impl Transaction for SQLTransaction {
         }
     }
 
-    async fn find_unique(&self, model: &'static Model, finder: &Value, ignore_select_and_include: bool, action: Action, transaction_ctx: transaction::Ctx, req_ctx: Option<Ctx>, path: KeyPath) -> teo_result::Result<Option<Object>> {
-        let objects = Execution::query_objects(transaction_ctx.namespace(), self.queryable(), model, finder, self.dialect(), action, transaction_ctx, req_ctx, path).await?;
+    async fn find_unique(&self, model: &'static Model, finder: &Value, ignore_select_and_include: bool, action: Action, transaction_ctx: transaction::Ctx, request: Option<Request>, path: KeyPath) -> teo_result::Result<Option<Object>> {
+        let objects = Execution::query_objects(transaction_ctx.namespace(), self.queryable(), model, finder, self.dialect(), action, transaction_ctx, request, path).await?;
         if objects.is_empty() {
             Ok(None)
         } else {
@@ -273,8 +273,8 @@ impl Transaction for SQLTransaction {
         }
     }
 
-    async fn find_many(&self, model: &'static Model, finder: &Value, ignore_select_and_include: bool, action: Action, transaction_ctx: transaction::Ctx, req_ctx: Option<Ctx>, path: KeyPath) -> teo_result::Result<Vec<Object>> {
-        Execution::query_objects(transaction_ctx.namespace(), self.queryable(), model, finder, self.dialect(), action, transaction_ctx, req_ctx, path).await
+    async fn find_many(&self, model: &'static Model, finder: &Value, ignore_select_and_include: bool, action: Action, transaction_ctx: transaction::Ctx, request: Option<Request>, path: KeyPath) -> teo_result::Result<Vec<Object>> {
+        Execution::query_objects(transaction_ctx.namespace(), self.queryable(), model, finder, self.dialect(), action, transaction_ctx, request, path).await
     }
 
     async fn count(&self, model: &'static Model, finder: &Value, transaction_ctx: transaction::Ctx, path: KeyPath) -> teo_result::Result<Value> {

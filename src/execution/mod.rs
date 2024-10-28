@@ -23,6 +23,7 @@ use teo_runtime::model::Object;
 use teo_runtime::namespace::Namespace;
 use teo_runtime::error_ext;
 use teo_runtime::request;
+use teo_runtime::request::Request;
 use teo_runtime::traits::named::Named;
 use teo_runtime::value::Value;
 use teo_runtime::teon;
@@ -90,13 +91,13 @@ impl Execution {
         Value::Dictionary(retval)
     }
 
-    pub(crate) async fn query_objects<'a>(namespace: &Namespace, conn: &'a dyn Queryable, model: &'static Model, finder: &'a Value, dialect: SQLDialect, action: Action, transaction_ctx: transaction::Ctx, req_ctx: Option<request::Ctx>, path: KeyPath) -> teo_result::Result<Vec<Object>> {
+    pub(crate) async fn query_objects<'a>(namespace: &Namespace, conn: &'a dyn Queryable, model: &'static Model, finder: &'a Value, dialect: SQLDialect, action: Action, transaction_ctx: transaction::Ctx, request: Option<Request>, path: KeyPath) -> teo_result::Result<Vec<Object>> {
         let values = Self::query(namespace, conn, model, finder, dialect, path).await?;
         let select = finder.as_dictionary().unwrap().get("select");
         let include = finder.as_dictionary().unwrap().get("include");
         let mut results = vec![];
         for value in values {
-            let object = transaction_ctx.new_object(model, action, req_ctx.clone())?;
+            let object = transaction_ctx.new_object(model, action, request.clone())?;
             object.set_from_database_result_value(&value, select, include);
             results.push(object);
         }
